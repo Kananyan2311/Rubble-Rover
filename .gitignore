@@ -1,0 +1,26 @@
+# Compiled binaries & build artifacts
+*.hex
+*.bin
+*.elf
+*.o
+*.a
+*.d
+build/
+.pio/
+.vscode/
+.idea/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Arduino temporary files
+*.tmp
+*.bak
