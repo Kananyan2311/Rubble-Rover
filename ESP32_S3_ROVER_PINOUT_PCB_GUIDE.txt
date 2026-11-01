@@ -1,0 +1,339 @@
+====================================================================================================
+PROJECT SPECIFICATION & HARDWARE IMPLEMENTATION MANUAL
+RubbleRover: IoT-Based Land Rover with Web-Based Surveillance and Communication for 
+Post-Earthquake Victim Search, Reconnaissance, and First Responder Assistance
+====================================================================================================
+Target Architecture: Dual-MCU Central-Controller IoT System:
+  1. ESP32-S3-DevKitC-1: Master Tactical Controller, WebApp Host, Sensor & Motion Hub
+     - Controls 3x TB6612FNG Dual H-Bridge Drivers for 6 Independent High-Torque DC Motors:
+       * Motor Driver #1: Front Pair (Front-Left & Front-Right)
+       * Motor Driver #2: Middle Pair (Middle-Left & Middle-Right)
+       * Motor Driver #3: Rear Pair (Rear-Left & Rear-Right)
+     - Standby (STBY): Hardwired to 3.3V (Always Active, 0 GPIOs wasted).
+     - Hosts Wi-Fi AP ("RubbleRover-Tactical-AP") & Embedded Tactical Web Server (192.168.4.1).
+     - Acoustic Tracking: INMP441 24-bit I2S Digital MEMS Microphone (Real-Time Audio Streaming)
+       * Pin-Minimization: L/R tied permanently to GND on PCB (0 GPIOs wasted; Left Channel).
+       * Contiguous 3-pin physical bus on Header J3: SCK (GPIO 42), WS (GPIO 41), SD (GPIO 40).
+     - Thermal Imaging: MLX90640 32x24 Far-Infrared Thermal Sensor (Live Heat Signature & Victim Alert)
+       * Contiguous 2-pin I2C bus on Header J3: SDA (GPIO 2), SCL (GPIO 1) with 4.7k pull-ups.
+     - Servos: 100% REMOVED from S3 (freed pins reallocated to sensors and clean layout).
+     - Silicon Safety: Zero PSRAM conflicts, zero strapping traps, zero debugging interference.
+  2. ESP32-CAM (AI-Thinker): High-Speed Optical Video Satellite
+     - Connects as Wi-Fi station to ESP32-S3 AP (Fixed IP: 192.168.4.2).
+     - Broadcasts fallback direct AP ("RubbleRover-CAM-AP", IP: 192.168.5.1).
+     - Optical Video: OV2640 2MP Camera (MJPEG Live Stream on /stream at high FPS).
+     - Tactical Searchlight: Onboard High-Power Flash LED (GPIO 4, toggled from WebApp/S3).
+     - 100% relieved of external I2S and I2C sensors: zero pin conflicts, zero DMA contention!
+====================================================================================================
+
+TABLE OF CONTENTS:
+1. System Architecture & Network Topology
+2. ESP32-S3 Central Controller Master Pinout Table (User Verified Configuration)
+3. INMP441 Pin-Minimization & I2S Audio Interface (GPIO 42, 41, 40)
+4. MLX90640 Thermal Sensor I2C Interface (GPIO 2, 1)
+5. TB6612FNG Driver Pin Mappings (Front, Middle, and Rear Pairs)
+6. ESP32-CAM Video Satellite Pinout & Configuration
+7. Power Architecture & Multi-Domain Isolation (Preventing Brownouts)
+8. PCB Layout & Routing Directives (2-Layer Optimization)
+9. Complete Bill of Materials (BOM)
+
+====================================================================================================
+1. SYSTEM ARCHITECTURE & NETWORK TOPOLOGY
+====================================================================================================
+
+               +--------------------------------------------------------------------+
+               |           FIRST RESPONDER WEB INTERFACE (TACTICAL GCS)             |
+               |  - Real-Time Optical HUD (OV2640 Video Stream from ESP32-CAM)     |
+               |  - Live 32x24 FLIR Thermal Heatmap & Victim Alarm (from ESP32-S3)  |
+               |  - Live Digital Audio Stream & VU Meter (from ESP32-S3 INMP441)    |
+               |  - Virtual RC Dual Joysticks & Keyboard Driving (Skid-Steer)       |
+               |  - Speed Rate Select (Crawl 40% / Normal 70% / Turbo 100%) & E-Stop|
+               |  - Searchlight Floodlight Toggle                                   |
+               +--------------------------------------------------------------------+
+                                                ^
+                                                | Wi-Fi 2.4GHz (HTTP / WebSockets / WAV)
+                                                v
+               +--------------------------------------------------------------------+
+               |       ESP32-S3: MASTER TACTICAL CONTROLLER & WEB SERVER            |
+               |  - Hosts Wi-Fi AP: "RubbleRover-Tactical-AP" (IP: 192.168.4.1)     |
+               |  - Embedded Web Server serves complete Tactical GCS WebApp         |
+               |  - Direct motor control endpoint (/control) with zero latency      |
+               |  - Reads INMP441 I2S mic on GPIO 42/41/40 & streams (/audio.wav)   |
+               |  - Reads MLX90640 I2C sensor on GPIO 2/1 & broadcasts (/thermal)   |
+               |  - Hardware PWM (20kHz ultrasonic) for 6 DC motors (3x TB6612)     |
+               |  - 1000ms Watchdog failsafe: automatically stops motors if signal  |
+               |    is interrupted. Zero home Wi-Fi or router dependencies!         |
+               +--------------------------------------------------------------------+
+                         |                                       |
+                         | Wi-Fi Station (192.168.4.2)           | 18 PWM & DIR Lines
+                         v                                       v
+               +----------------------+                +--------------------+
+               | ESP32-CAM: VIDEO SAT |                | 3x TB6612FNG DUAL  |
+               | - OV2640 Camera Feed |                | H-BRIDGE DRIVERS   |
+               | - Streams /stream    |                | - Front Pair       |
+               | - Searchlight GPIO 4 |                | - Middle Pair      |
+               | - Fallback AP:       |                | - Rear Pair        |
+               |   192.168.5.1        |                +--------------------+
+               +----------------------+                          |
+                                                                 v
+                                                       6x DC High-Torque Motors
+
+====================================================================================================
+2. ESP32-S3 CENTRAL CONTROLLER MASTER PINOUT TABLE
+====================================================================================================
+
+STRICT SILICON CONFLICT RULES APPLIED:
+1. No connection to GPIO 33, 34, 35, 36, 37 (Octal PSRAM / Flash lines).
+2. No connection to GPIO 0, 3, 45, 46 (Hardware strapping pins).
+3. GPIO 43 (TX0), 44 (RX0), 19 (USB D-), 20 (USB D+) kept dedicated for programming/debug.
+4. GPIO 48 left unconnected (preserves onboard WS2812 RGB LED DIN).
+5. TB6612 STBY hardwired directly to 3.3V on the board (motors remain safe via internal 100k pull-downs).
+6. INMP441 L/R pin hardwired to GND on PCB (0 GPIOs wasted; Left Channel).
+
+----------------------------------------------------------------------------------------------------
+HEADER J1 (LEFT SIDE - Looking from Top, USB ports pointing DOWN)
+----------------------------------------------------------------------------------------------------
+Pin # | Name     | Connected Net         | Category      | Function Description
+------|----------|-----------------------|---------------|------------------------------------------
+J1-01 | 3V3      | 3V3_LOGIC             | POWER (3.3V)  | TB6612 #1, #2, #3 VCC & STBY Rail + Sensors
+J1-02 | 3V3      | 3V3_SPARE             | POWER (3.3V)  | Auxiliary 3.3V Logic Supply
+J1-03 | RST (EN) | MCU_EN                | SYSTEM RESET  | Master Enable / Reset (Pull-up)
+J1-04 | GPIO 4   | M_ML_PWMA             | MOTOR PWM     | Middle-Left Motor Speed (LEDC Ch2)
+J1-05 | GPIO 5   | M_ML_AIN1             | MOTOR DIR     | Middle-Left Motor Direction 1
+J1-06 | GPIO 6   | M_ML_AIN2             | MOTOR DIR     | Middle-Left Motor Direction 2
+J1-07 | GPIO 7   | M_MR_BIN1             | MOTOR DIR     | Middle-Right Motor Direction 1
+J1-08 | GPIO 15  | M_MR_BIN2             | MOTOR DIR     | Middle-Right Motor Direction 2
+J1-09 | GPIO 16  | M_MR_PWMB             | MOTOR PWM     | Middle-Right Motor Speed (LEDC Ch3)
+J1-10 | GPIO 17  | M_FL_PWMA             | MOTOR PWM     | Front-Left Motor Speed (LEDC Ch0)
+J1-11 | GPIO 18  | M_FL_AIN1             | MOTOR DIR     | Front-Left Motor Direction 1
+J1-12 | GPIO 8   | M_FL_AIN2             | MOTOR DIR     | Front-Left Motor Direction 2
+J1-13 | GPIO 3   | [DO NOT CONNECT]      | STRAPPING PIN | JTAG Bootstrap - LEAVE UNCONNECTED (NC)!
+J1-14 | GPIO 46  | [DO NOT CONNECT]      | STRAPPING PIN | ROM Boot Log Strap - LEAVE UNCONNECTED (NC)!
+J1-15 | GPIO 9   | M_FR_BIN1             | MOTOR DIR     | Front-Right Motor Direction 1
+J1-16 | GPIO 10  | M_FR_BIN2             | MOTOR DIR     | Front-Right Motor Direction 2
+J1-17 | GPIO 11  | M_FR_PWMB             | MOTOR PWM     | Front-Right Motor Speed (LEDC Ch1)
+J1-18 | GPIO 12  | M_RL_PWMA             | MOTOR PWM     | Rear-Left Motor Speed (LEDC Ch4)
+J1-19 | GPIO 13  | M_RL_AIN1             | MOTOR DIR     | Rear-Left Motor Direction 1
+J1-20 | GPIO 14  | M_RL_AIN2             | MOTOR DIR     | Rear-Left Motor Direction 2
+J1-21 | 5V       | 5V_MCU                | POWER (5V In) | Regulated 5V Supply Input from Buck Converter
+J1-22 | GND      | SYSTEM_GND            | GROUND        | Common Digital Ground Plane
+
+----------------------------------------------------------------------------------------------------
+HEADER J3 (RIGHT SIDE - Looking from Top, USB ports pointing DOWN)
+----------------------------------------------------------------------------------------------------
+Pin # | Name     | Connected Net         | Category      | Function Description
+------|----------|-----------------------|---------------|------------------------------------------
+J3-01 | GND      | SYSTEM_GND            | GROUND        | Common Digital Ground Plane
+J3-02 | TX (IO43)| UART0_TXD             | SERIAL DEBUG  | Hardware Serial Monitor TX - Keep Free
+J3-03 | RX (IO44)| UART0_RXD             | SERIAL DEBUG  | Hardware Serial Monitor RX - Keep Free
+J3-04 | GPIO 1   | I2C_THERMAL_SCL       | I2C BUS       | MLX90640 I2C Clock (with 4.7k Pull-up)
+J3-05 | GPIO 2   | I2C_THERMAL_SDA       | I2C BUS       | MLX90640 I2C Data (with 4.7k Pull-up)
+J3-06 | GPIO 42  | I2S_MIC_SCK           | I2S AUDIO     | INMP441 Bit Clock (BCLK) [Contiguous Bus]
+J3-07 | GPIO 41  | I2S_MIC_WS            | I2S AUDIO     | INMP441 Word Select (LRCK) [Contiguous Bus]
+J3-08 | GPIO 40  | I2S_MIC_SD            | I2S AUDIO     | INMP441 Serial Data (DIN) [Contiguous Bus]
+J3-09 | GPIO 39  | SPARE_IO39            | SPARE GPIO    | Clean Unallocated Expansion GPIO (Free)
+J3-10 | GPIO 38  | M_RR_BIN1             | MOTOR DIR     | Rear-Right Motor Direction 1
+J3-11 | GPIO 37  | [DO NOT CONNECT]      | OCTAL PSRAM   | Connected to Internal PSRAM - LEAVE NC!
+J3-12 | GPIO 36  | [DO NOT CONNECT]      | OCTAL PSRAM   | Connected to Internal PSRAM - LEAVE NC!
+J3-13 | GPIO 35  | [DO NOT CONNECT]      | OCTAL PSRAM   | Connected to Internal PSRAM - LEAVE NC!
+J3-14 | GPIO 0   | [DO NOT CONNECT]      | STRAPPING PIN | Boot Mode Strap & Button - LEAVE NC!
+J3-15 | GPIO 45  | [DO NOT CONNECT]      | STRAPPING PIN | VDD_SPI Voltage Strap - LEAVE NC!
+J3-16 | GPIO 48  | [DO NOT CONNECT]      | WS2812 RGB    | DevKitC v1.0 Onboard RGB LED - LEAVE NC!
+J3-17 | GPIO 47  | M_RR_BIN2             | MOTOR DIR     | Rear-Right Motor Direction 2
+J3-18 | GPIO 21  | M_RR_PWMB             | MOTOR PWM     | Rear-Right Motor Speed (LEDC Ch5)
+J3-19 | GPIO 20  | [USB D+]              | NATIVE USB    | Reserved for Native USB CDC - Keep Free
+J3-20 | GPIO 19  | [USB D-]              | NATIVE USB    | Reserved for Native USB CDC - Keep Free
+J3-21 | GND      | SYSTEM_GND            | GROUND        | Common Digital Ground Plane
+J3-22 | GND      | SYSTEM_GND            | GROUND        | Common Digital Ground Plane
+
+====================================================================================================
+3. INMP441 PIN-MINIMIZATION & I2S AUDIO INTERFACE (GPIO 42, 41, 40)
+====================================================================================================
+
+The INMP441 MEMS microphone provides 24-bit studio-grade digital audio.
+To minimize pin count and eliminate wasted GPIOs:
+1. The L/R (Channel Select) pin is hardwired directly to GND on the PCB:
+   - When L/R = GND, the microphone transmits audio in the LEFT channel slot.
+   - Saves 1 GPIO on the ESP32-S3!
+2. Power is drawn directly from the 3.3V logic rail and common GND plane.
+3. The remaining 3 signals are routed to three consecutive pins on Header J3:
+   - J3-06 (GPIO 42) -> SCK (Bit Clock / BCLK)
+   - J3-07 (GPIO 41) -> WS  (Word Select / LRCLK)
+   - J3-08 (GPIO 40) -> SD  (Serial Data Out / DIN)
+
+INMP441 HEADER PINOUT (Standard 6-pin 2.54mm header):
+----------------------------------------------------------------------------------------------------
+Module Pin | Wire To                   | Description
+-----------|---------------------------|------------------------------------------------------------
+VDD        | 3.3V Logic Rail (J1-01)   | 3.3V Power Supply (Decoupled with 0.1uF capacitor)
+GND        | System GND Plane (J3-01)  | Ground Return
+L/R        | System GND Plane (J3-01)  | Hardwired to GND (0 GPIOs wasted; Left Channel)
+SCK        | ESP32-S3 GPIO 42 (J3-06)  | I2S Serial Clock
+WS         | ESP32-S3 GPIO 41 (J3-07)  | I2S Word Select
+SD         | ESP32-S3 GPIO 40 (J3-08)  | I2S Serial Data Out
+
+PCB ROUTING ADVANTAGE:
+Because J3-06, J3-07, and J3-08 are contiguous, a 5-pin female connector (VDD, GND, SCK, WS, SD)
+can be routed directly on the top layer with zero vias and zero signal layer crossings!
+
+====================================================================================================
+4. MLX90640 THERMAL SENSOR I2C INTERFACE (GPIO 2, 1)
+====================================================================================================
+
+The MLX90640 Far-Infrared sensor array contains 768 individual thermal pixels (32x24).
+It operates over I2C at 400kHz (Fast Mode) or 100kHz (Standard Mode).
+
+MLX90640 HEADER PINOUT (Standard 4-pin 2.54mm header):
+----------------------------------------------------------------------------------------------------
+Module Pin | Wire To                   | Description
+-----------|---------------------------|------------------------------------------------------------
+VIN        | 3.3V Logic Rail (J1-01)   | 3.3V Clean Sensor Supply
+GND        | System GND Plane (J3-01)  | Sensor Ground
+SDA        | ESP32-S3 GPIO 2  (J3-05)  | I2C Serial Data (External 4.7k pull-up to 3.3V)
+SCL        | ESP32-S3 GPIO 1  (J3-04)  | I2C Serial Clock (External 4.7k pull-up to 3.3V)
+
+PCB ROUTING ADVANTAGE:
+GPIO 1 (J3-04) and GPIO 2 (J3-05) are directly adjacent on Header J3, right above the INMP441 bus.
+This keeps all sensor I/O together on the right header.
+
+====================================================================================================
+5. TB6612FNG MOTOR DRIVER WIRING DETAILS (FRONT, MIDDLE, REAR PAIRS)
+====================================================================================================
+
+Each TB6612 module features two rows of 8 pins:
+- Control Row: PWMA, AIN2, AIN1, STBY, BIN1, BIN2, PWMB, GND
+- Power Row:   VM, VCC, GND, AO1, AO2, BO2, BO1, GND
+
+All 3 modules have their STBY pin tied directly to 3.3V on the PCB (Always Active, 0 GPIOs wasted).
+
+----------------------------------------------------------------------------------------------------
+MODULE #1: FRONT MOTORS (FRONT-LEFT & FRONT-RIGHT)
+----------------------------------------------------------------------------------------------------
+TB6612 Pin | Wire To                   | ESP32 Pin # | PCB Trace Notes
+-----------|---------------------------|-------------|----------------------------------------------
+PWMA       | ESP32 GPIO 17             | J1-10       | Front-Left Speed (LEDC Ch0)
+AIN1       | ESP32 GPIO 18             | J1-11       | Front-Left Direction 1
+AIN2       | ESP32 GPIO 8              | J1-12       | Front-Left Direction 2
+STBY       | 3.3V Logic Rail           | J1-01 / 3V3 | Tied directly to 3.3V (Always Active)
+BIN1       | ESP32 GPIO 9              | J1-15       | Front-Right Direction 1
+BIN2       | ESP32 GPIO 10             | J1-16       | Front-Right Direction 2
+PWMB       | ESP32 GPIO 11             | J1-17       | Front-Right Speed (LEDC Ch1)
+GND        | System GND Plane          | J1-22       | Common Logic Ground
+VM         | Battery V_Motor (7.4-12V) | --          | 100uF Low-ESR Bulk Cap + 0.1uF Ceramic at pin
+VCC        | ESP32 3V3                 | J1-01       | Logic supply (3.3V) + 0.1uF Ceramic Cap
+AO1 / AO2  | Front-Left Motor Terminal | --          | 2-pin screw terminal (>= 25 mil trace)
+BO1 / BO2  | Front-Right Motor Terminal| --          | 2-pin screw terminal (>= 25 mil trace)
+
+----------------------------------------------------------------------------------------------------
+MODULE #2: MIDDLE MOTORS (MIDDLE-LEFT & MIDDLE-RIGHT)
+----------------------------------------------------------------------------------------------------
+TB6612 Pin | Wire To                   | ESP32 Pin # | PCB Trace Notes
+-----------|---------------------------|-------------|----------------------------------------------
+PWMA       | ESP32 GPIO 4              | J1-04       | Middle-Left Speed (LEDC Ch2)
+AIN1       | ESP32 GPIO 5              | J1-05       | Middle-Left Direction 1
+AIN2       | ESP32 GPIO 6              | J1-06       | Middle-Left Direction 2
+STBY       | 3.3V Logic Rail           | J1-01 / 3V3 | Tied directly to 3.3V (Always Active)
+BIN1       | ESP32 GPIO 7              | J1-07       | Middle-Right Direction 1
+BIN2       | ESP32 GPIO 15             | J1-08       | Middle-Right Direction 2
+PWMB       | ESP32 GPIO 16             | J1-09       | Middle-Right Speed (LEDC Ch3)
+GND        | System GND Plane          | J1-22       | Common Logic Ground
+VM         | Battery V_Motor (7.4-12V) | --          | 100uF Low-ESR Bulk Cap + 0.1uF Ceramic at pin
+VCC        | ESP32 3V3                 | J1-01       | Logic supply (3.3V) + 0.1uF Ceramic Cap
+AO1 / AO2  | Middle-Left Motor Terminal| --          | 2-pin screw terminal
+BO1 / BO2  | Middle-Right Motor Terminal --          | 2-pin screw terminal
+
+----------------------------------------------------------------------------------------------------
+MODULE #3: REAR/BACK MOTORS (REAR-LEFT & REAR-RIGHT)
+----------------------------------------------------------------------------------------------------
+TB6612 Pin | Wire To                   | ESP32 Pin # | PCB Trace Notes
+-----------|---------------------------|-------------|----------------------------------------------
+PWMA       | ESP32 GPIO 12             | J1-18       | Rear-Left Speed (LEDC Ch4)
+AIN1       | ESP32 GPIO 13             | J1-19       | Rear-Left Direction 1
+AIN2       | ESP32 GPIO 14             | J1-20       | Rear-Left Direction 2
+STBY       | 3.3V Logic Rail           | J1-01 / 3V3 | Tied directly to 3.3V (Always Active)
+BIN1       | ESP32 GPIO 38             | J3-10       | Rear-Right Direction 1
+BIN2       | ESP32 GPIO 47             | J3-17       | Rear-Right Direction 2
+PWMB       | ESP32 GPIO 21             | J3-18       | Rear-Right Speed (LEDC Ch5)
+GND        | System GND Plane          | J3-01       | Common Logic Ground
+VM         | Battery V_Motor (7.4-12V) | --          | 100uF Low-ESR Bulk Cap + 0.1uF Ceramic at pin
+VCC        | ESP32 3V3                 | J1-01       | Logic supply (3.3V) + 0.1uF Ceramic Cap
+AO1 / AO2  | Rear-Left Motor Terminal  | --          | 2-pin screw terminal
+BO1 / BO2  | Rear-Right Motor Terminal | --          | 2-pin screw terminal
+
+====================================================================================================
+6. ESP32-CAM VIDEO SATELLITE PINOUT & CONFIGURATION
+====================================================================================================
+
+ESP32-CAM CONNECTIONS:
+----------------------------------------------------------------------------------------------------
+Pin Name   | Connected To              | Function Description
+-----------|---------------------------|------------------------------------------------------------
+5V         | Clean 5V Supply (Buck)    | Primary Board Power Supply
+GND        | System Star Ground        | Common Digital Ground Plane
+GPIO 4     | Onboard High-Power Flash  | Tactical Searchlight Floodlight (Controlled via WebApp)
+GPIO 0     | Boot Strap Jumper         | Tie to GND ONLY when flashing firmware via FTDI
+U0TXD (IO1)| FTDI Serial RX            | UART Programming & Telemetry Output
+U0RXD (IO3)| FTDI Serial TX            | UART Programming Input
+Camera DVP | OV2640 Sensor Flex Ribbon | Native 24-pin 0.5mm FPC Camera Socket
+
+ALL OTHER PINS (GPIO 2, 12, 13, 14, 15, 16) ARE UNCONNECTED (NC)!
+
+====================================================================================================
+7. POWER ARCHITECTURE & MULTI-DOMAIN ISOLATION
+====================================================================================================
+
+To prevent brownouts during motor stalls and high Wi-Fi transmission spikes:
+
+                          [ 2S / 3S LiPo Battery (7.4V - 11.1V) ]
+                                            │
+                                  [ Main Toggle Switch ]
+                                            │
+                                  [ 15A Inline Fuse ]
+                                            │
+          ┌─────────────────────────────────┴─────────────────────────────────┐
+          │                                                                   │
+          ▼                                                                   ▼
+   [ TB6612 VM Rail ]                                               [ Buck Converter (5V 3A) ]
+   (Raw Battery Voltage)                                            (Clean Logic Rail)
+   - 470uF-1000uF Low-ESR Bulk Cap                                  - ESP32-S3 5V VIN
+   - 3x TB6612 VM pins                                              - ESP32-CAM 5V pin
+   - Peak: 9.0A Stall                                               - INMP441 & MLX90640 (via S3 3V3)
+          │                                                                   │
+          └─────────────────────────────────┬─────────────────────────────────┘
+                                            │
+                             [ COMMON STAR GROUND BUS ]
+               (All battery (-), Buck GND, MCU GND, and Driver GND meet here)
+
+====================================================================================================
+8. PCB LAYOUT & ROUTING DIRECTIVES (2-LAYER OPTIMIZATION)
+====================================================================================================
+1. Layer 1 (Top): Signal traces, point-to-point buses, and 3.3V logic rails.
+2. Layer 2 (Bottom): Solid, unbroken Ground Pour (SYSTEM_GND).
+3. Motor Trace Widths: VM, GND, AO1, AO2, BO1, BO2 traces must be at least 35-50 mil (or copper pour).
+4. Audio & I2C Traces:
+   - INMP441 SCK/WS/SD traces (GPIO 42, 41, 40) kept parallel with equal lengths (< 8 cm).
+   - MLX90640 SDA/SCL traces (GPIO 2, 1) kept paired with 4.7k pull-up resistors close to the MCU.
+5. Decoupling:
+   - 0.1uF ceramic capacitors placed within 3mm of every VCC pin (TB6612, INMP441, MLX90640).
+   - 100uF electrolytic capacitors placed right next to each TB6612 VM pin.
+
+====================================================================================================
+9. COMPLETE BILL OF MATERIALS (BOM)
+====================================================================================================
+Item | Description                                      | Qty | Footprint / Notes
+-----|--------------------------------------------------|-----|-------------------------------------
+1    | ESP32-S3-WROOM-1 DevKitC-1 v1.0 (N8R8/N16R8)     | 1   | 44-pin DIP Header Socket
+2    | AI-Thinker ESP32-CAM + OV2640 2MP Camera Module  | 1   | 16-pin DIP Header Socket
+3    | TB6612FNG Dual H-Bridge Motor Driver Module      | 3   | 16-pin 0.1" DIP Breakout Module
+4    | INMP441 24-bit I2S Digital MEMS Microphone       | 1   | 6-pin 0.1" DIP Breakout (L/R to GND)
+5    | MLX90640 32x24 Far-Infrared Thermal Sensor       | 1   | 4-pin 0.1" DIP Breakout Module
+6    | DC-DC Step-Down Buck Converter (5V 3A LM2596/MP) | 1   | Clean Logic Power Supply
+7    | TT/N20 High-Torque DC Gearmotors (6-12V)         | 6   | Wheel Drive Pods (Front, Mid, Rear)
+8    | Electrolytic Bulk Capacitors (470uF-1000uF 25V)  | 1   | Main VM Power Bus
+9    | Ceramic Decoupling Capacitors (0.1uF 50V 0805)   | 5   | VCC Pins (3x Drivers, 2x Sensors)
+10   | Pull-Up Resistors (4.7k 5% 0805 or 1/4W PTH)     | 2   | I2C SDA and SCL Lines
+11   | 2-Pin 5.08mm Screw Terminals                     | 6   | Motor Phase Output Headers
+12   | XT60 High-Current Battery Connector & 15A Fuse   | 1   | Main Battery Input Line
+====================================================================================================
+END OF SPECIFICATION MANUAL
+====================================================================================================
