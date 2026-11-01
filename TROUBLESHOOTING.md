@@ -201,3 +201,4 @@ You can test each motor individually to isolate wiring or driver issues:
 | **Camera feed offline** | GPIO 0 jumper left on CAM board | Remove GPIO 0 jumper; press `RST` on ESP32-CAM |
 | **Thermal sensor offline** | Missing I2C pull-ups or swapped pins | Check SDA=GPIO 2, SCL=GPIO 1; add 4.7k pull-ups |
 | **Rover reboots on forward** | Voltage dip from motor inrush | Add 1000µF capacitor across motor battery rail |
+

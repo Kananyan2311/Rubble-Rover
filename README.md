@@ -123,11 +123,11 @@ Open the **Library Manager** in Arduino IDE and install:
 ## Repository Files
 
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md): **Comprehensive troubleshooting & hardware debugging guide.**
-- `RubbleRover_S3_MotorController/`: Master controller sketch for ESP32-S3.
-- `RubbleRover_CAM_SurveillanceHub/`: Video streamer sketch for ESP32-CAM.
+- `RubbleRover_S3_MotorController/`: Master controller sketch for ESP32-S3 (`.ino` + `rubble_rover_web.h`).
+- `RubbleRover_CAM_SurveillanceHub/`: Video streamer sketch for ESP32-CAM (`.ino`).
 - `RubbleRover_WebApp.html`: Standalone GameBoy GCS interface.
-- `test_verification_suite.py`: Automated 5-cycle verification audit.
 - `ESP32_S3_ROVER_PINOUT.csv`: Complete pin assignment table.
+- `ESP32_S3_ROVER_PINOUT_PCB_GUIDE.txt`: Hardware wiring and PCB routing manual.
 
 ---
 
