@@ -634,7 +634,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
         <!-- DIRECTION POLARITY TOGGLES (MOTOR A & B) -->
         <div class="polarity-box">
-          <button class="pol-btn" id="btnPolA" onclick="togglePolA()" title="Motor A (Left: FL, ML, RL) Polarity">MOT A: NORM</button>
+          <button class="pol-btn inverted" id="btnPolA" onclick="togglePolA()" title="Motor A (Left: FL, ML, RL) Polarity">MOT A: REV</button>
           <button class="pol-btn" id="btnPolB" onclick="togglePolB()" title="Motor B (Right: FR, MR, RR) Polarity">MOT B: NORM</button>
         </div>
       </div>
@@ -722,7 +722,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         steering: 0,
         rateMode: 2,       // 1: 40%, 2: 70%, 3: 100%
         rateMult: 0.70,
-        polA: 1,           // Motor A Polarity (+1: Norm, -1: Rev)
+        polA: -1,          // Motor A Polarity (-1: Rev by default, +1: Norm)
         polB: 1,           // Motor B Polarity (+1: Norm, -1: Rev)
         light: false,
         eStop: false,

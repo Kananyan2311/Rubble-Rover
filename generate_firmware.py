@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 generate_firmware.py
-Generates the perfected, ultra-reliable ESP32-S3 firmware for RubbleRover.
-Includes the embedded Neo-Brutalist GameBoy WebApp and dual-core FreeRTOS architecture.
+Generates the simplified, robust ESP32-S3 firmware for RubbleRover.
+Motor logic: Direct and simplified (Forward -> all forward, Backward -> all backward, Spin Left, Spin Right).
+Motor A is physically inverted by default. All stopped states use High-Z neutral coast.
 """
 
 firmware_template = r'''/*
   RubbleRover - ESP32-S3 Master Tactical Controller
   Hardware: ESP32-S3 (Dual-Core) + 3x TB6612FNG (6WD) + MLX90640 + INMP441
-  Network: Standalone SoftAP (192.168.4.1)
+  Direct simplified motor control: Forward, Reverse, Spin Left, Spin Right, Stop.
 */
 
 #include <Arduino.h>
@@ -60,17 +61,11 @@ firmware_template = r'''/*
 #define PIN_I2S_SD     40   // Serial Data In (DIN)
 
 // --- MLX90640 I2C Thermal Imager (Header J3-04 & J3-05) ---
-#define PIN_I2C_SDA    1    // I2C Data (User confirmed GPIO 1)
-#define PIN_I2C_SCL    2    // I2C Clock (User confirmed GPIO 2)
+#define PIN_I2C_SDA    1    // I2C Data (GPIO 1)
+#define PIN_I2C_SCL    2    // I2C Clock (GPIO 2)
 
 // --- Free Expansion Pin ---
-#define PIN_SPARE_IO39 39   // Unallocated Clean GPIO on Header J3-09
-
-// =================================================================================================
-// MOTOR PWM CONSTANTS (1 kHz High-Torque Operation)
-// =================================================================================================
-const int PWM_FREQ = 1000;     // 1 kHz (maximum torque for DC gearmotors)
-const int PWM_RES  = 8;        // 8-bit resolution (0 to 255)
+#define PIN_SPARE_IO39 39   // Header J3-09
 
 // =================================================================================================
 // SYSTEM STATE & WATCHDOG
@@ -85,18 +80,16 @@ Adafruit_MLX90640 mlx;
 // Motion State
 int16_t curThrottle = 0;
 int16_t curSteering = 0;
-float   curRateMultiplier = 0.70f;
+int     currentSpeed = 220;
 bool    isEstop = false;
 bool    searchlightOn = false;
 String  camSatelliteIP = "192.168.4.2";
 
-// Direction Polarity (+1: Normal, -1: Inverted)
-int8_t polarityA = 1; // Motor A (FL, ML, RL)
-int8_t polarityB = 1; // Motor B (FR, MR, RR)
-int16_t curLeftSpeed = 0;
-int16_t curRightSpeed = 0;
+// Motor A is physically reversed out of the box
+int8_t  polarityA = -1; // -1: Inverted (Left side FL, ML, RL)
+int8_t  polarityB =  1; // +1: Normal (Right side FR, MR, RR)
 
-// Watchdog Timer (Failsafe stops motors if no GCS command within 1000ms)
+// Watchdog Timer (stops motors if signal lost > 1000ms)
 unsigned long lastControlTime = 0;
 const unsigned long WATCHDOG_TIMEOUT_MS = 1000;
 
@@ -110,8 +103,8 @@ bool i2cSwapped = false;
 float thermalPixels[768];
 portMUX_TYPE thermalMux = portMUX_INITIALIZER_UNLOCKED;
 
-// Audio PCM Ring Buffer for Non-Blocking Audio Streaming
-const size_t AUDIO_SLICE_SAMPLES = 4000; // 0.25 sec @ 16kHz
+// Audio Non-Blocking Buffer
+const size_t AUDIO_SLICE_SAMPLES = 4000;
 int16_t audioSliceBuffer[AUDIO_SLICE_SAMPLES];
 volatile size_t audioSliceIdx = 0;
 portMUX_TYPE audioMux = portMUX_INITIALIZER_UNLOCKED;
@@ -122,7 +115,17 @@ portMUX_TYPE audioMux = portMUX_INITIALIZER_UNLOCKED;
 void setupMotors();
 void setupI2SMicrophone();
 void setupThermalSensor();
-void setMotorOutputs(int16_t fl, int16_t fr, int16_t ml, int16_t mr, int16_t rl, int16_t rr);
+void setLeftMotors(uint8_t in1, uint8_t in2, int speed);
+void setRightMotors(uint8_t in1, uint8_t in2, int speed);
+void moveForward(int speed);
+void moveBackward(int speed);
+void spinLeft(int speed);
+void spinRight(int speed);
+void steerForwardLeft(int speed);
+void steerForwardRight(int speed);
+void steerBackwardLeft(int speed);
+void steerBackwardRight(int speed);
+void stopMotors();
 void emergencyBrake();
 void handleRoot();
 void handleControl();
@@ -143,79 +146,44 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(__WEBAPP_HTML_PAYLOAD__)rawlitera
 // SYSTEM INITIALIZATION (setup)
 // =================================================================================================
 void setup() {
-  // 1. HARD-CLAMP ALL 18 MOTOR PINS TO LOW AT MICROSECOND 1
-  // Front Pair
-  pinMode(PIN_FL_PWMA, OUTPUT); digitalWrite(PIN_FL_PWMA, LOW);
-  pinMode(PIN_FL_AIN1, OUTPUT); digitalWrite(PIN_FL_AIN1, LOW);
-  pinMode(PIN_FL_AIN2, OUTPUT); digitalWrite(PIN_FL_AIN2, LOW);
-  pinMode(PIN_FR_BIN1, OUTPUT); digitalWrite(PIN_FR_BIN1, LOW);
-  pinMode(PIN_FR_BIN2, OUTPUT); digitalWrite(PIN_FR_BIN2, LOW);
-  pinMode(PIN_FR_PWMB, OUTPUT); digitalWrite(PIN_FR_PWMB, LOW);
+  // 1. Initialize all 18 motor pins to OUTPUT and immediately STOP (High-Z Coast)
+  setupMotors();
 
-  // Middle Pair
-  pinMode(PIN_ML_PWMA, OUTPUT); digitalWrite(PIN_ML_PWMA, LOW);
-  pinMode(PIN_ML_AIN1, OUTPUT); digitalWrite(PIN_ML_AIN1, LOW);
-  pinMode(PIN_ML_AIN2, OUTPUT); digitalWrite(PIN_ML_AIN2, LOW);
-  pinMode(PIN_MR_BIN1, OUTPUT); digitalWrite(PIN_MR_BIN1, LOW);
-  pinMode(PIN_MR_BIN2, OUTPUT); digitalWrite(PIN_MR_BIN2, LOW);
-  pinMode(PIN_MR_PWMB, OUTPUT); digitalWrite(PIN_MR_PWMB, LOW);
-
-  // Rear Pair
-  pinMode(PIN_RL_PWMA, OUTPUT); digitalWrite(PIN_RL_PWMA, LOW);
-  pinMode(PIN_RL_AIN1, OUTPUT); digitalWrite(PIN_RL_AIN1, LOW);
-  pinMode(PIN_RL_AIN2, OUTPUT); digitalWrite(PIN_RL_AIN2, LOW);
-  pinMode(PIN_RR_BIN1, OUTPUT); digitalWrite(PIN_RR_BIN1, LOW);
-  pinMode(PIN_RR_BIN2, OUTPUT); digitalWrite(PIN_RR_BIN2, LOW);
-  pinMode(PIN_RR_PWMB, OUTPUT); digitalWrite(PIN_RR_PWMB, LOW);
-
-  // 2. Initialize Hardware CDC Serial FIRST with connection wait
+  // 2. Initialize Hardware CDC Serial
   Serial.begin(115200);
   unsigned long startSerial = millis();
   while (!Serial && (millis() - startSerial < 2500)) {
     delay(10);
   }
-  delay(150);
+  delay(100);
 
-  Serial.println("\n\n====================================================================");
-  Serial.println("  RUBBLEROVER: OPTIMIZED DUAL-CORE MASTER CONTROLLER ONLINE!");
-  Serial.println("  Post-Earthquake Reconnaissance & Surveillance System");
+  Serial.println("\n====================================================================");
+  Serial.println("  RUBBLEROVER: SIMPLIFIED HIGH-TORQUE 6WD CONTROLLER ONLINE");
+  Serial.println("  Motor A: Inverted | Motor B: Normal | High-Z Coast Stop");
   Serial.println("====================================================================");
-  Serial.flush();
 
-  // 3. START WI-FI ACCESS POINT (Immediate Standalone AP)
+  // 3. Standalone Wi-Fi Access Point (192.168.4.1)
   WiFi.persistent(false);
   WiFi.disconnect(true);
   delay(50);
   WiFi.mode(WIFI_AP);
-  WiFi.setSleep(false); // Disable Wi-Fi sleep for ultra-low latency AP streaming
+  WiFi.setSleep(false);
 
   IPAddress apIP(192, 168, 4, 1);
   IPAddress gateway(192, 168, 4, 1);
   IPAddress subnet(255, 255, 255, 0);
   WiFi.softAPConfig(apIP, gateway, subnet);
 
-  bool apStarted = WiFi.softAP("RubbleRover-Tactical-AP", "RubbleRover2026", 1, 0, 4);
-  WiFi.setTxPower(WIFI_POWER_19_5dBm); // Maximum RF broadcast power
+  WiFi.softAP("RubbleRover-Tactical-AP", "RubbleRover2026", 1, 0, 4);
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
+  Serial.print("[WIFI-AP] Online! SSID: RubbleRover-Tactical-AP | IP: ");
+  Serial.println(WiFi.softAPIP());
 
-  if (apStarted) {
-    Serial.print("[WIFI-AP] SUCCESS! SSID: RubbleRover-Tactical-AP | IP: ");
-    Serial.println(WiFi.softAPIP());
-  } else {
-    WiFi.softAP("RubbleRover-Tactical-AP", "RubbleRover2026");
-    Serial.print("[WIFI-AP] Fallback SSID: RubbleRover-Tactical-AP | IP: ");
-    Serial.println(WiFi.softAPIP());
-  }
-
-  // 4. Attach 1kHz High-Torque PWM to all 6 motors
-  setupMotors();
-
-  // 5. Initialize INMP441 I2S Microphone
+  // 4. Initialize Sensors
   setupI2SMicrophone();
-
-  // 6. Initialize MLX90640 I2C Thermal Sensor
   setupThermalSensor();
 
-  // 7. Setup Web Server Endpoints
+  // 5. Setup WebServer Endpoints
   server.on("/", HTTP_GET, handleRoot);
   server.on("/index.html", HTTP_GET, handleRoot);
   server.on("/control", HTTP_GET, handleControl);
@@ -227,61 +195,51 @@ void setup() {
   server.on("/status", HTTP_GET, handleStatus);
 
   server.begin();
-  Serial.println("[HTTP] Web Server Started on Port 80");
+  Serial.println("[HTTP] Web Server Online on Port 80");
 
-  // 8. Launch Dedicated Sensor Task on Core 0 (16KB stack for MLX floating point)
-  xTaskCreatePinnedToCore(
-    sensorTask,        // Function pointer
-    "SensorTaskCore0", // Task name
-    16384,             // Stack size (16KB)
-    NULL,              // Parameters
-    1,                 // Priority
-    NULL,              // Task handle
-    0                  // Core 0 (Background sensors)
-  );
-  Serial.println("[FREERTOS] SensorTask pinned to Core 0. Core 1 dedicated to Driving & GCS.");
+  // 6. FreeRTOS Core 0 Background Task for MLX90640 & I2S Audio
+  xTaskCreatePinnedToCore(sensorTask, "SensorTaskCore0", 16384, NULL, 1, NULL, 0);
 
   lastControlTime = millis();
 }
 
 // =================================================================================================
-// MAIN LOOP (Runs on Core 1 - Zero Lag Motor Control & Web Requests)
+// MAIN LOOP (Core 1 - Instant Motor Response & WebServer)
 // =================================================================================================
 void loop() {
   server.handleClient();
 
-  // Safety Watchdog: If no control packet received in 1000ms, brake motors
+  // Watchdog failsafe: Stop motors if no command received within 1000ms
   if (millis() - lastControlTime > WATCHDOG_TIMEOUT_MS) {
     if (curThrottle != 0 || curSteering != 0) {
-      Serial.println("[WATCHDOG] Failsafe: Signal timeout! Stopping motors.");
-      emergencyBrake();
+      Serial.println("[WATCHDOG] Failsafe timeout! Stopping motors.");
+      stopMotors();
     }
   }
 
-  // Periodic Serial Heartbeat every 2.5s (Guarantees Serial Monitor always displays active status)
+  // Periodic 2.5s Heartbeat status log
   static unsigned long lastSerialHeartbeat = 0;
   if (millis() - lastSerialHeartbeat >= 2500) {
     lastSerialHeartbeat = millis();
     int clientCount = WiFi.softAPgetStationNum();
-    Serial.printf("[HEARTBEAT] Clients:%d | MLX:%s | Mic:%s (Lvl:%d%%) | Drive L:%+d R:%+d | IP:%s\n",
+    Serial.printf("[HEARTBEAT] Clients:%d | MLX:%s | Mic:%s (Lvl:%d%%) | IP:%s\n",
                   clientCount,
-                  mlxFound ? "ONLINE(32x24)" : "OFFLINE",
-                  micOnline ? "ONLINE" : "SEARCHING",
+                  mlxFound ? "ONLINE" : "OFFLINE",
+                  micOnline ? "ONLINE" : "OFFLINE",
                   liveSoundLevel,
-                  curLeftSpeed, curRightSpeed,
                   WiFi.softAPIP().toString().c_str());
   }
 }
 
 // =================================================================================================
-// SENSOR TASK (Pinned to Core 0 - 8Hz Thermal Polling & I2S Microphone)
+// SENSOR TASK (Core 0 - 8Hz Thermal Polling & I2S Microphone)
 // =================================================================================================
 void sensorTask(void *pvParameters) {
   TickType_t xLastWakeTime = xTaskGetTickCount();
   float localFrame[768];
 
   while (true) {
-    // 1. Hot-plug re-probe if sensor was not found at boot
+    // Hot-plug auto-probe for MLX90640
     if (!mlxFound) {
       static unsigned long lastI2cRetry = 0;
       if (millis() - lastI2cRetry > 2000) {
@@ -300,7 +258,7 @@ void sensorTask(void *pvParameters) {
       }
     }
 
-    // 2. Read Thermal Frame via Official Adafruit Driver
+    // Read thermal frame
     if (mlxFound) {
       if (mlx.getFrame(localFrame) == 0) {
         portENTER_CRITICAL(&thermalMux);
@@ -311,7 +269,7 @@ void sensorTask(void *pvParameters) {
       }
     }
 
-    // 3. Sample INMP441 Audio Level & Fill Non-Blocking Audio Buffer
+    // Sample INMP441 audio
     #if HAVE_ESP_I2S
     if (micOnline) {
       int32_t rawBuf[128];
@@ -324,7 +282,6 @@ void sensorTask(void *pvParameters) {
           int32_t raw = rawBuf[i];
           int16_t pcm = (int16_t)(raw >> 14);
           sum += abs(pcm);
-
           if (audioSliceIdx < AUDIO_SLICE_SAMPLES) {
             audioSliceBuffer[audioSliceIdx++] = pcm;
           }
@@ -338,126 +295,131 @@ void sensorTask(void *pvParameters) {
     }
     #endif
 
-    // Run loop at ~16 Hz (every 60ms) to match 8Hz sensor refresh rate
     vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(60));
   }
 }
 
 // =================================================================================================
-// MOTOR CONTROL FUNCTIONS (3x TB6612, 1kHz High-Torque PWM)
+// SIMPLIFIED MOTOR CONTROL LOGIC (3x TB6612, High-Torque, Neutral Coast)
 // =================================================================================================
+
+// Initialize all 18 motor control pins
 void setupMotors() {
-  // Attach 1kHz PWM on all 6 motor speed lines
-  #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    ledcAttach(PIN_FL_PWMA, PWM_FREQ, PWM_RES);
-    ledcAttach(PIN_FR_PWMB, PWM_FREQ, PWM_RES);
-    ledcAttach(PIN_ML_PWMA, PWM_FREQ, PWM_RES);
-    ledcAttach(PIN_MR_PWMB, PWM_FREQ, PWM_RES);
-    ledcAttach(PIN_RL_PWMA, PWM_FREQ, PWM_RES);
-    ledcAttach(PIN_RR_PWMB, PWM_FREQ, PWM_RES);
-    ledcWrite(PIN_FL_PWMA, 0);
-    ledcWrite(PIN_FR_PWMB, 0);
-    ledcWrite(PIN_ML_PWMA, 0);
-    ledcWrite(PIN_MR_PWMB, 0);
-    ledcWrite(PIN_RL_PWMA, 0);
-    ledcWrite(PIN_RR_PWMB, 0);
-  #else
-    analogWriteFrequency(PIN_FL_PWMA, PWM_FREQ);
-    analogWriteFrequency(PIN_FR_PWMB, PWM_FREQ);
-    analogWriteFrequency(PIN_ML_PWMA, PWM_FREQ);
-    analogWriteFrequency(PIN_MR_PWMB, PWM_FREQ);
-    analogWriteFrequency(PIN_RL_PWMA, PWM_FREQ);
-    analogWriteFrequency(PIN_RR_PWMB, PWM_FREQ);
-    analogWriteResolution(PIN_FL_PWMA, PWM_RES);
-    analogWriteResolution(PIN_FR_PWMB, PWM_RES);
-    analogWriteResolution(PIN_ML_PWMA, PWM_RES);
-    analogWriteResolution(PIN_MR_PWMB, PWM_RES);
-    analogWriteResolution(PIN_RL_PWMA, PWM_RES);
-    analogWriteResolution(PIN_RR_PWMB, PWM_RES);
-    analogWrite(PIN_FL_PWMA, 0);
-    analogWrite(PIN_FR_PWMB, 0);
-    analogWrite(PIN_ML_PWMA, 0);
-    analogWrite(PIN_MR_PWMB, 0);
-    analogWrite(PIN_RL_PWMA, 0);
-    analogWrite(PIN_RR_PWMB, 0);
-  #endif
+  pinMode(PIN_FL_PWMA, OUTPUT); pinMode(PIN_FL_AIN1, OUTPUT); pinMode(PIN_FL_AIN2, OUTPUT);
+  pinMode(PIN_FR_BIN1, OUTPUT); pinMode(PIN_FR_BIN2, OUTPUT); pinMode(PIN_FR_PWMB, OUTPUT);
+  pinMode(PIN_ML_PWMA, OUTPUT); pinMode(PIN_ML_AIN1, OUTPUT); pinMode(PIN_ML_AIN2, OUTPUT);
+  pinMode(PIN_MR_BIN1, OUTPUT); pinMode(PIN_MR_BIN2, OUTPUT); pinMode(PIN_MR_PWMB, OUTPUT);
+  pinMode(PIN_RL_PWMA, OUTPUT); pinMode(PIN_RL_AIN1, OUTPUT); pinMode(PIN_RL_AIN2, OUTPUT);
+  pinMode(PIN_RR_BIN1, OUTPUT); pinMode(PIN_RR_BIN2, OUTPUT); pinMode(PIN_RR_PWMB, OUTPUT);
 
-  emergencyBrake();
-  Serial.println("[MOTORS] 3x TB6612FNG Initialized (1 kHz High-Torque PWM). STBY hardwired to 3.3V.");
+  stopMotors();
+  Serial.println("[MOTORS] 6WD Motors Initialized (High-Z Coasting on Idle, Zero Drag).");
 }
 
-void writeMotorPWM(int pwmPin, uint32_t duty) {
-  #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    ledcWrite(pwmPin, duty);
-  #else
-    analogWrite(pwmPin, duty);
-  #endif
+// Set Left Motor Bank (FL, ML, RL)
+void setLeftMotors(uint8_t in1, uint8_t in2, int speed) {
+  digitalWrite(PIN_FL_AIN1, in1); digitalWrite(PIN_FL_AIN2, in2); analogWrite(PIN_FL_PWMA, speed);
+  digitalWrite(PIN_ML_AIN1, in1); digitalWrite(PIN_ML_AIN2, in2); analogWrite(PIN_ML_PWMA, speed);
+  digitalWrite(PIN_RL_AIN1, in1); digitalWrite(PIN_RL_AIN2, in2); analogWrite(PIN_RL_PWMA, speed);
 }
 
-void setMotorChannel(int pinIn1, int pinIn2, int pwmPin, int16_t speed, int8_t polarity) {
-  int16_t effSpeed = speed * polarity;
-  effSpeed = constrain(effSpeed, -255, 255);
-
-  uint32_t rawDuty = (uint32_t)abs(effSpeed);
-  uint32_t pwmDuty = 0;
-
-  if (rawDuty > 0) {
-    // High-Torque Breakaway Boost: maps [1..255] to [80..255]
-    // Guarantees zero stall / hum under rover weight!
-    pwmDuty = (uint32_t)map(rawDuty, 1, 255, 80, 255);
-    if (pwmDuty > 255) pwmDuty = 255;
-  }
-
-  if (effSpeed > 0) {
-    digitalWrite(pinIn1, HIGH);
-    digitalWrite(pinIn2, LOW);
-    writeMotorPWM(pwmPin, pwmDuty);
-  } else if (effSpeed < 0) {
-    digitalWrite(pinIn1, LOW);
-    digitalWrite(pinIn2, HIGH);
-    writeMotorPWM(pwmPin, pwmDuty);
-  } else {
-    // Neutral Coast Stop (High-Z avoids dynamic braking drag)
-    digitalWrite(pinIn1, LOW);
-    digitalWrite(pinIn2, LOW);
-    writeMotorPWM(pwmPin, 0);
-  }
+// Set Right Motor Bank (FR, MR, RR)
+void setRightMotors(uint8_t in1, uint8_t in2, int speed) {
+  digitalWrite(PIN_FR_BIN1, in1); digitalWrite(PIN_FR_BIN2, in2); analogWrite(PIN_FR_PWMB, speed);
+  digitalWrite(PIN_MR_BIN1, in1); digitalWrite(PIN_MR_BIN2, in2); analogWrite(PIN_MR_PWMB, speed);
+  digitalWrite(PIN_RR_BIN1, in1); digitalWrite(PIN_RR_BIN2, in2); analogWrite(PIN_RR_PWMB, speed);
 }
 
-void setMotorOutputs(int16_t fl, int16_t fr, int16_t ml, int16_t mr, int16_t rl, int16_t rr) {
-  // Front Pair (FL = Motor A, FR = Motor B)
-  setMotorChannel(PIN_FL_AIN1, PIN_FL_AIN2, PIN_FL_PWMA, fl, polarityA);
-  setMotorChannel(PIN_FR_BIN1, PIN_FR_BIN2, PIN_FR_PWMB, fr, polarityB);
+// 1. FORWARD: All 6 motors roll forward!
+void moveForward(int speed) {
+  // Motor A reversed: LOW, HIGH = Forward
+  if (polarityA == -1) setLeftMotors(LOW, HIGH, speed);
+  else                 setLeftMotors(HIGH, LOW, speed);
 
-  // Middle Pair (ML = Motor A, MR = Motor B)
-  setMotorChannel(PIN_ML_AIN1, PIN_ML_AIN2, PIN_ML_PWMA, ml, polarityA);
-  setMotorChannel(PIN_MR_BIN1, PIN_MR_BIN2, PIN_MR_PWMB, mr, polarityB);
+  // Motor B normal: HIGH, LOW = Forward
+  if (polarityB == 1)  setRightMotors(HIGH, LOW, speed);
+  else                 setRightMotors(LOW, HIGH, speed);
+}
 
-  // Rear Pair (RL = Motor A, RR = Motor B)
-  setMotorChannel(PIN_RL_AIN1, PIN_RL_AIN2, PIN_RL_PWMA, rl, polarityA);
-  setMotorChannel(PIN_RR_BIN1, PIN_RR_BIN2, PIN_RR_PWMB, rr, polarityB);
+// 2. BACKWARD: All 6 motors roll reverse!
+void moveBackward(int speed) {
+  // Motor A reversed: HIGH, LOW = Reverse
+  if (polarityA == -1) setLeftMotors(HIGH, LOW, speed);
+  else                 setLeftMotors(LOW, HIGH, speed);
+
+  // Motor B normal: LOW, HIGH = Reverse
+  if (polarityB == 1)  setRightMotors(LOW, HIGH, speed);
+  else                 setRightMotors(HIGH, LOW, speed);
+}
+
+// 3. SPIN LEFT (Button B): Left Reverse, Right Forward (Tank Pivot)
+void spinLeft(int speed) {
+  if (polarityA == -1) setLeftMotors(HIGH, LOW, speed);
+  else                 setLeftMotors(LOW, HIGH, speed);
+
+  if (polarityB == 1)  setRightMotors(HIGH, LOW, speed);
+  else                 setRightMotors(LOW, HIGH, speed);
+}
+
+// 4. SPIN RIGHT (Button A): Left Forward, Right Reverse (Tank Pivot)
+void spinRight(int speed) {
+  if (polarityA == -1) setLeftMotors(LOW, HIGH, speed);
+  else                 setLeftMotors(HIGH, LOW, speed);
+
+  if (polarityB == 1)  setRightMotors(LOW, HIGH, speed);
+  else                 setRightMotors(HIGH, LOW, speed);
+}
+
+// 5. STEER FORWARD LEFT: Left slower, Right full
+void steerForwardLeft(int speed) {
+  int slowSpeed = speed / 2;
+  if (polarityA == -1) setLeftMotors(LOW, HIGH, slowSpeed);
+  else                 setLeftMotors(HIGH, LOW, slowSpeed);
+
+  if (polarityB == 1)  setRightMotors(HIGH, LOW, speed);
+  else                 setRightMotors(LOW, HIGH, speed);
+}
+
+// 6. STEER FORWARD RIGHT: Left full, Right slower
+void steerForwardRight(int speed) {
+  int slowSpeed = speed / 2;
+  if (polarityA == -1) setLeftMotors(LOW, HIGH, speed);
+  else                 setLeftMotors(HIGH, LOW, speed);
+
+  if (polarityB == 1)  setRightMotors(HIGH, LOW, slowSpeed);
+  else                 setRightMotors(LOW, HIGH, slowSpeed);
+}
+
+// 7. STEER BACKWARD LEFT: Left slower, Right full
+void steerBackwardLeft(int speed) {
+  int slowSpeed = speed / 2;
+  if (polarityA == -1) setLeftMotors(HIGH, LOW, slowSpeed);
+  else                 setLeftMotors(LOW, HIGH, slowSpeed);
+
+  if (polarityB == 1)  setRightMotors(LOW, HIGH, speed);
+  else                 setRightMotors(HIGH, LOW, speed);
+}
+
+// 8. STEER BACKWARD RIGHT: Left full, Right slower
+void steerBackwardRight(int speed) {
+  int slowSpeed = speed / 2;
+  if (polarityA == -1) setLeftMotors(HIGH, LOW, speed);
+  else                 setLeftMotors(LOW, HIGH, speed);
+
+  if (polarityB == 1)  setRightMotors(LOW, HIGH, slowSpeed);
+  else                 setRightMotors(HIGH, LOW, slowSpeed);
+}
+
+// 9. STOP: High-Z Neutral Coast (Wheels turn freely by hand, zero stiction)
+void stopMotors() {
+  setLeftMotors(LOW, LOW, 0);
+  setRightMotors(LOW, LOW, 0);
+  curThrottle = 0;
+  curSteering = 0;
 }
 
 void emergencyBrake() {
-  curThrottle = 0;
-  curSteering = 0;
-  curLeftSpeed = 0;
-  curRightSpeed = 0;
-
-  // Coast Stop all motor lines
-  digitalWrite(PIN_FL_AIN1, LOW); digitalWrite(PIN_FL_AIN2, LOW);
-  digitalWrite(PIN_FR_BIN1, LOW); digitalWrite(PIN_FR_BIN2, LOW);
-  digitalWrite(PIN_ML_AIN1, LOW); digitalWrite(PIN_ML_AIN2, LOW);
-  digitalWrite(PIN_MR_BIN1, LOW); digitalWrite(PIN_MR_BIN2, LOW);
-  digitalWrite(PIN_RL_AIN1, LOW); digitalWrite(PIN_RL_AIN2, LOW);
-  digitalWrite(PIN_RR_BIN1, LOW); digitalWrite(PIN_RR_BIN2, LOW);
-
-  writeMotorPWM(PIN_FL_PWMA, 0);
-  writeMotorPWM(PIN_FR_PWMB, 0);
-  writeMotorPWM(PIN_ML_PWMA, 0);
-  writeMotorPWM(PIN_MR_PWMB, 0);
-  writeMotorPWM(PIN_RL_PWMA, 0);
-  writeMotorPWM(PIN_RR_PWMB, 0);
+  stopMotors();
 }
 
 // =================================================================================================
@@ -467,24 +429,21 @@ void setupI2SMicrophone() {
   #if HAVE_ESP_I2S
     i2s.setPins(PIN_I2S_SCK, PIN_I2S_WS, -1, PIN_I2S_SD);
     if (i2s.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO)) {
-      Serial.println("[AUDIO] INMP441 Initialized via ESP_I2S (16kHz, Stereo BCLK 1.024MHz).");
+      Serial.println("[AUDIO] INMP441 Initialized via ESP_I2S (16kHz).");
+      micOnline = true;
+    } else if (i2s.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_MONO, I2S_STD_SLOT_LEFT)) {
+      Serial.println("[AUDIO] INMP441 Initialized mono.");
       micOnline = true;
     } else {
-      if (i2s.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_MONO, I2S_STD_SLOT_LEFT)) {
-        Serial.println("[AUDIO] INMP441 Initialized in mono mode.");
-        micOnline = true;
-      } else {
-        Serial.println("[AUDIO] WARNING: ESP_I2S initialization failed.");
-      }
+      Serial.println("[AUDIO] WARNING: ESP_I2S init failed.");
     }
   #else
-    Serial.println("[AUDIO] Using legacy I2S config.");
     micOnline = true;
   #endif
 }
 
 // =================================================================================================
-// ADAFRUIT_MLX90640 I2C THERMAL SENSOR SETUP
+// MLX90640 THERMAL SENSOR SETUP
 // =================================================================================================
 void setupThermalSensor() {
   Serial.println("[I2C] Initializing I2C for MLX90640...");
@@ -493,18 +452,16 @@ void setupThermalSensor() {
   Wire.beginTransmission(0x33);
   byte error = Wire.endTransmission();
   if (error == 0) {
-    Serial.println("[I2C] SUCCESS: MLX90640 detected at 0x33 (SDA:1, SCL:2)!");
+    Serial.println("[I2C] MLX90640 detected at 0x33 (SDA:1, SCL:2)!");
     i2cSwapped = false;
   } else {
-    Serial.printf("[I2C] WARNING: 0x33 not responding on (1,2) (code %d). Probing swapped pins (2,1)...\n", error);
     Wire.end();
     Wire.begin(PIN_I2C_SCL, PIN_I2C_SDA, 400000);
     Wire.beginTransmission(0x33);
     if (Wire.endTransmission() == 0) {
-      Serial.println("[I2C] SUCCESS: MLX90640 detected at 0x33 on swapped pins (SDA:2, SCL:1)!");
+      Serial.println("[I2C] MLX90640 detected on swapped pins (SDA:2, SCL:1)!");
       i2cSwapped = true;
     } else {
-      Serial.println("[I2C] WARNING: MLX90640 not yet detected. Hot-plug task will auto-probe.");
       Wire.end();
       Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 400000);
       i2cSwapped = false;
@@ -518,13 +475,11 @@ void setupThermalSensor() {
     mlx.setRefreshRate(MLX90640_8_HZ);
     Wire.setClock(800000);
     mlxFound = true;
-  } else {
-    Serial.println("[MLX90640] MLX90640 init failed! Will retry in background task.");
   }
 }
 
 // =================================================================================================
-// HTTP REQUEST HANDLERS
+// HTTP HANDLERS
 // =================================================================================================
 void handleRoot() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -536,39 +491,50 @@ void handleControl() {
 
   if (server.hasArg("estop") && server.arg("estop").toInt() == 1) {
     isEstop = true;
-    emergencyBrake();
+    stopMotors();
     server.send(200, "application/json", "{\"status\":\"ESTOP\"}");
     return;
   }
   isEstop = false;
 
-  if (server.hasArg("t")) curThrottle = server.arg("t").toInt();
-  if (server.hasArg("s")) curSteering = server.arg("s").toInt();
+  // Speed Mode: Crawl=180, Normal=220, Turbo=255
+  int speed = 220;
   if (server.hasArg("r")) {
     int r = server.arg("r").toInt();
-    curRateMultiplier = (r == 1) ? 0.40f : (r == 2 ? 0.70f : 1.00f);
+    if (r == 1) speed = 180;
+    else if (r == 2) speed = 220;
+    else if (r == 3) speed = 255;
   }
-  if (server.hasArg("light")) {
-    searchlightOn = (server.arg("light").toInt() == 1);
+  currentSpeed = speed;
+
+  if (server.hasArg("pol_a")) polarityA = (int8_t)server.arg("pol_a").toInt();
+  if (server.hasArg("pol_b")) polarityB = (int8_t)server.arg("pol_b").toInt();
+
+  int t = server.hasArg("t") ? server.arg("t").toInt() : 0;
+  int s = server.hasArg("s") ? server.arg("s").toInt() : 0;
+  curThrottle = t;
+  curSteering = s;
+
+  // DIRECT SIMPLIFIED MOTION SELECTION
+  if (t > 0 && s == 0) {
+    moveForward(speed);
+  } else if (t < 0 && s == 0) {
+    moveBackward(speed);
+  } else if (s < -200 && t == 0) {
+    spinLeft(speed);  // Button B (Spin Left)
+  } else if (s > 200 && t == 0) {
+    spinRight(speed); // Button A (Spin Right)
+  } else if (t > 0 && s < 0) {
+    steerForwardLeft(speed);
+  } else if (t > 0 && s > 0) {
+    steerForwardRight(speed);
+  } else if (t < 0 && s < 0) {
+    steerBackwardLeft(speed);
+  } else if (t < 0 && s > 0) {
+    steerBackwardRight(speed);
+  } else {
+    stopMotors();
   }
-  if (server.hasArg("pol_a")) {
-    polarityA = (int8_t)server.arg("pol_a").toInt();
-  }
-  if (server.hasArg("pol_b")) {
-    polarityB = (int8_t)server.arg("pol_b").toInt();
-  }
-
-  // Skid-Steer Differential Mixing
-  int16_t leftSpeed  = (int16_t)((curThrottle + curSteering) * curRateMultiplier);
-  int16_t rightSpeed = (int16_t)((curThrottle - curSteering) * curRateMultiplier);
-
-  leftSpeed  = constrain(leftSpeed, -255, 255);
-  rightSpeed = constrain(rightSpeed, -255, 255);
-
-  curLeftSpeed = leftSpeed;
-  curRightSpeed = rightSpeed;
-
-  setMotorOutputs(leftSpeed, rightSpeed, leftSpeed, rightSpeed, leftSpeed, rightSpeed);
 
   server.client().setNoDelay(true);
   server.send(200, "application/json", "{\"status\":\"OK\"}");
@@ -578,7 +544,6 @@ void handleThermal() {
   float localPixels[768];
   float maxT = -100.0f;
   float minT = 200.0f;
-  float sumT = 0.0f;
 
   portENTER_CRITICAL(&thermalMux);
   for (int i = 0; i < 768; i++) {
@@ -591,7 +556,6 @@ void handleThermal() {
     if (!isnan(val)) {
       if (val > maxT) maxT = val;
       if (val < minT) minT = val;
-      sumT += val;
     }
   }
 
@@ -604,11 +568,8 @@ void handleThermal() {
          ",\"sound_level\":" + String(liveSoundLevel) + ",\"pixels\":[";
 
   for (int i = 0; i < 768; i++) {
-    if (isnan(localPixels[i])) {
-      json += "0.0";
-    } else {
-      json += String(localPixels[i], 1);
-    }
+    if (isnan(localPixels[i])) json += "0.0";
+    else json += String(localPixels[i], 1);
     if (i < 767) json += ",";
   }
   json += "]}";
@@ -621,7 +582,6 @@ void handleThermalRaw() {
   handleThermal();
 }
 
-// 44-byte standard RIFF WAV header builder
 void buildWavHeader(uint8_t *header, uint32_t sampleRate, uint16_t bitsPerSample, uint16_t channels, uint32_t pcmDataBytes) {
   uint32_t fileSize = pcmDataBytes + 36;
   uint32_t byteRate = sampleRate * channels * (bitsPerSample / 8);
@@ -633,8 +593,8 @@ void buildWavHeader(uint8_t *header, uint32_t sampleRate, uint16_t bitsPerSample
   header[6] = (uint8_t)((fileSize >> 16) & 0xFF);
   header[7] = (uint8_t)((fileSize >> 24) & 0xFF);
   memcpy(header + 8, "WAVEfmt ", 8);
-  header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0; // Subchunk1Size (16 for PCM)
-  header[20] = 1; header[21] = 0; // AudioFormat (1 for PCM)
+  header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0;
+  header[20] = 1; header[21] = 0;
   header[22] = (uint8_t)(channels & 0xFF); header[23] = 0;
   header[24] = (uint8_t)(sampleRate & 0xFF);
   header[25] = (uint8_t)((sampleRate >> 8) & 0xFF);
@@ -653,7 +613,6 @@ void buildWavHeader(uint8_t *header, uint32_t sampleRate, uint16_t bitsPerSample
   header[43] = (uint8_t)((pcmDataBytes >> 24) & 0xFF);
 }
 
-// NON-BLOCKING Fast WAV Audio Slicing (Takes 2ms to serve, zero server freeze!)
 void handleAudioWav() {
   uint8_t wavHeader[44];
   size_t samplesToSend = 0;
@@ -662,13 +621,11 @@ void handleAudioWav() {
   portENTER_CRITICAL(&audioMux);
   samplesToSend = audioSliceIdx;
   if (samplesToSend > AUDIO_SLICE_SAMPLES) samplesToSend = AUDIO_SLICE_SAMPLES;
-  for (size_t i = 0; i < samplesToSend; i++) {
-    sendBuf[i] = audioSliceBuffer[i];
-  }
-  audioSliceIdx = 0; // Reset slice for next capture
+  for (size_t i = 0; i < samplesToSend; i++) sendBuf[i] = audioSliceBuffer[i];
+  audioSliceIdx = 0;
   portEXIT_CRITICAL(&audioMux);
 
-  if (samplesToSend == 0) samplesToSend = 512; // Minimal silent pad
+  if (samplesToSend == 0) samplesToSend = 512;
 
   uint32_t pcmBytes = samplesToSend * sizeof(int16_t);
   buildWavHeader(wavHeader, 16000, 16, 1, pcmBytes);
@@ -686,7 +643,7 @@ void handleAudioWav() {
 void handleRegisterCam() {
   if (server.hasArg("ip")) {
     camSatelliteIP = server.arg("ip");
-    Serial.printf("[CAMERA-HUB] Satellite Video Stream registered at IP: %s\n", camSatelliteIP.c_str());
+    Serial.printf("[CAMERA-HUB] Registered at IP: %s\n", camSatelliteIP.c_str());
     server.send(200, "application/json", "{\"status\":\"REGISTERED\",\"cam_ip\":\"" + camSatelliteIP + "\"}");
   } else {
     server.send(400, "text/plain", "Missing IP parameter");
@@ -694,9 +651,7 @@ void handleRegisterCam() {
 }
 
 void handleLight() {
-  if (server.hasArg("state")) {
-    searchlightOn = (server.arg("state").toInt() == 1);
-  }
+  if (server.hasArg("state")) searchlightOn = (server.arg("state").toInt() == 1);
   server.send(200, "application/json", "{\"status\":\"OK\",\"light\":" + String(searchlightOn ? "1" : "0") + "}");
 }
 
@@ -705,7 +660,7 @@ void handleStatus() {
   json += "\"uptime_ms\":" + String(millis()) + ",";
   json += "\"throttle\":" + String(curThrottle) + ",";
   json += "\"steering\":" + String(curSteering) + ",";
-  json += "\"rate\":" + String(curRateMultiplier, 2) + ",";
+  json += "\"speed\":" + String(currentSpeed) + ",";
   json += "\"pol_a\":" + String(polarityA) + ",";
   json += "\"pol_b\":" + String(polarityB) + ",";
   json += "\"estop\":" + String(isEstop ? "true" : "false") + ",";
@@ -725,29 +680,26 @@ if __name__ == '__main__':
 
     full_firmware = firmware_template.replace("__WEBAPP_HTML_PAYLOAD__", html_content)
 
-    # 1. Update Workspace RubbleRover_S3_MotorController.ino
     with open('RubbleRover_S3_MotorController.ino', 'w', encoding='utf-8') as f:
         f.write(full_firmware)
 
-    # 2. Update subdirectory sketch if exists
-    import os
-    if os.path.exists('RubbleRover_S3_MotorController'):
-        with open('RubbleRover_S3_MotorController/RubbleRover_S3_MotorController.ino', 'w', encoding='utf-8') as f:
-            f.write(full_firmware)
+    with open('RubbleRover_S3_MotorController/RubbleRover_S3_MotorController.ino', 'w', encoding='utf-8') as f:
+        f.write(full_firmware)
 
-    # 3. Update User's Active Arduino Sketch directory
+    import os
     arduino_dir = r'C:\Users\Kananyan\Documents\Arduino\sketch_nov1a'
     if os.path.exists(arduino_dir):
         with open(os.path.join(arduino_dir, 'sketch_nov1a.ino'), 'w', encoding='utf-8') as f:
             f.write(full_firmware)
         print(f"SUCCESS: Synchronized firmware to {arduino_dir}\\sketch_nov1a.ino")
 
-    # 4. Generate header rubble_rover_web.h
     header_content = '#pragma once\n\nconst char INDEX_HTML[] PROGMEM = R"rawliteral(' + html_content + ')rawliteral";\n'
     with open('rubble_rover_web.h', 'w', encoding='utf-8') as f:
+        f.write(header_content)
+    with open('RubbleRover_S3_MotorController/rubble_rover_web.h', 'w', encoding='utf-8') as f:
         f.write(header_content)
     if os.path.exists(arduino_dir):
         with open(os.path.join(arduino_dir, 'rubble_rover_web.h'), 'w', encoding='utf-8') as f:
             f.write(header_content)
 
-    print("SUCCESS: All ESP32-S3 firmware sketches updated and synchronized successfully!")
+    print("SUCCESS: Simplified motor firmware generated and synchronized!")

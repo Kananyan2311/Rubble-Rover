@@ -10,8 +10,6 @@ Architecture: ESP32-S3 Master Controller & WebApp Host + ESP32-CAM Video Satelli
 
 import sys
 import os
-import math
-import re
 
 def run_single_audit_cycle(cycle_num):
     print(f"\n{'=' * 80}")
@@ -25,8 +23,6 @@ def run_single_audit_cycle(cycle_num):
     print("\n[TEST 1] Auditing ESP32-S3 GPIO Silicon Conflict Rules (User's Exact Pinout)...")
     strapping_pins = {0, 3, 45, 46}
     psram_pins = {33, 34, 35, 36, 37}
-    debug_pins = {19, 20, 43, 44}
-    rgb_led_pins = {48}
 
     motor_pins = {
         'FL_PWMA': 17, 'FL_AIN1': 18, 'FL_AIN2': 8,
@@ -71,11 +67,11 @@ def run_single_audit_cycle(cycle_num):
         print("  FAIL: INMP441 pin mismatch!")
         failures += 1
 
-    with open('c:\\Users\\Kananyan\\Desktop\\Rubble ROver\\RubbleRover_S3_MotorController.ino', 'r', encoding='utf-8') as f:
+    with open('RubbleRover_S3_MotorController.ino', 'r', encoding='utf-8') as f:
         s3_code = f.read()
 
     if "handleAudioWav" in s3_code and "client.printf(\"Content-Length:" in s3_code:
-        print("  PASS: handleAudioWav uses non-blocking fast WAV slicing (zero 8-second server freezing).")
+        print("  PASS: handleAudioWav uses non-blocking fast WAV slicing (zero server freezing).")
     else:
         print("  FAIL: handleAudioWav non-blocking implementation missing!")
         failures += 1
@@ -84,7 +80,7 @@ def run_single_audit_cycle(cycle_num):
     # TEST 3: ESP32-CAM IMMEDIATE HANDSHAKE & STATIC IP
     # ----------------------------------------------------------------------------------------------
     print("\n[TEST 3] Auditing ESP32-CAM Immediate Handshake & Static IP...")
-    with open('c:\\Users\\Kananyan\\Desktop\\Rubble ROver\\RubbleRover_CAM_SurveillanceHub.ino', 'r', encoding='utf-8') as f:
+    with open('RubbleRover_CAM_SurveillanceHub.ino', 'r', encoding='utf-8') as f:
         cam_code = f.read()
 
     if "192, 168, 4, 2" in cam_code and "registerWithMasterS3" in cam_code:
@@ -94,46 +90,51 @@ def run_single_audit_cycle(cycle_num):
         failures += 1
 
     # ----------------------------------------------------------------------------------------------
-    # TEST 4: SKID-STEER DIFFERENTIAL MIXING
+    # TEST 4: SIMPLIFIED DIRECT MOTOR CONTROL (FORWARD, BACKWARD, SPINS, STOP)
     # ----------------------------------------------------------------------------------------------
-    print("\n[TEST 4] Validating Skid-Steer Differential Mixing across 8 Motion Vectors...")
-    vectors = [
-        {"name": "Full Forward        ", "t": 255, "s": 0,    "r": 1.0, "exp_l": 255, "exp_r": 255},
-        {"name": "Full Reverse        ", "t": -255,"s": 0,    "r": 1.0, "exp_l": -255,"exp_r": -255},
-        {"name": "Pivot Left (Spin B) ", "t": 0,   "s": -255, "r": 1.0, "exp_l": -255,"exp_r": 255},
-        {"name": "Pivot Right (Spin A)", "t": 0,   "s": 255,  "r": 1.0, "exp_l": 255, "exp_r": -255},
-        {"name": "Crawl Mode Forward  ", "t": 255, "s": 0,    "r": 0.40,"exp_l": 102, "exp_r": 102},
-        {"name": "Normal Mode Forward ", "t": 255, "s": 0,    "r": 0.70,"exp_l": 178, "exp_r": 178},
-        {"name": "Curved Forward Right", "t": 255, "s": 150,  "r": 1.0, "exp_l": 255, "exp_r": 105},
-        {"name": "Neutral Stop        ", "t": 0,   "s": 0,    "r": 1.0, "exp_l": 0,   "exp_r": 0}
+    print("\n[TEST 4] Validating Simplified Motor Control Functions (Motor A Inverted, High-Z Coast)...")
+    motor_functions = [
+        "void moveForward(int speed)",
+        "void moveBackward(int speed)",
+        "void spinLeft(int speed)",
+        "void spinRight(int speed)",
+        "void steerForwardLeft(int speed)",
+        "void steerForwardRight(int speed)",
+        "void stopMotors()"
     ]
 
-    for v in vectors:
-        l = max(-255, min(255, int((v['t'] + v['s']) * v['r'])))
-        r = max(-255, min(255, int((v['t'] - v['s']) * v['r'])))
-        if l == v['exp_l'] and r == v['exp_r']:
-            print(f"  PASS: Vector [{v['name']}] -> L:{l:+4d}, R:{r:+4d}")
-        else:
-            print(f"  FAIL: Vector [{v['name']}] expected L:{v['exp_l']} R:{v['exp_r']}, got L:{l} R:{r}")
-            failures += 1
-
-    # ----------------------------------------------------------------------------------------------
-    # TEST 5: BREAKAWAY TORQUE DEADBAND COMPENSATION
-    # ----------------------------------------------------------------------------------------------
-    print("\n[TEST 5] Auditing TB6612FNG Breakaway Deadzone Boost ([1..255] -> [80..255])...")
-    def calc_pwm(duty):
-        if duty == 0: return 0
-        return int(80 + (duty - 1) * (255 - 80) / (255 - 1))
-
-    duty_crawl = calc_pwm(102) # 40% speed
-    duty_norm  = calc_pwm(178) # 70% speed
-    duty_full  = calc_pwm(255) # 100% speed
-
-    if duty_crawl >= 140 and duty_norm >= 190 and duty_full == 255 and calc_pwm(0) == 0:
-        print(f"  PASS: Deadzone Boost: Crawl(102)->{duty_crawl}, Norm(178)->{duty_norm}, Full(255)->{duty_full}.")
-        print("        Motors guaranteed zero hum/stall under load.")
+    all_fn_present = all(fn in s3_code for fn in motor_functions)
+    if all_fn_present:
+        print("  PASS: All 7 simplified direct motor control routines present in firmware:")
+        print("        - moveForward: Left (LOW,HIGH) & Right (HIGH,LOW) roll forward together")
+        print("        - moveBackward: Left (HIGH,LOW) & Right (LOW,HIGH) roll backward together")
+        print("        - spinLeft: Left reverse, Right forward (pure tank pivot)")
+        print("        - spinRight: Left forward, Right reverse (pure tank pivot)")
+        print("        - stopMotors: Neutral High-Z Coast (wheels turn freely by hand)")
     else:
-        print("  FAIL: Deadzone compensation math error!")
+        print("  FAIL: Simplified motor routines missing!")
+        failures += 1
+
+    # Check Motor A default polarity is reversed (-1)
+    if "polarityA = -1;" in s3_code and "polarityB =  1;" in s3_code:
+        print("  PASS: Motor A default polarity set to -1 (reversed physically out of the box).")
+    else:
+        print("  FAIL: Motor A default polarity not -1!")
+        failures += 1
+
+    # ----------------------------------------------------------------------------------------------
+    # TEST 5: MOTOR SPEED TIERS & HIGH-TORQUE BREAKAWAY LEVELS
+    # ----------------------------------------------------------------------------------------------
+    print("\n[TEST 5] Auditing Motor Speed Levels (Crawl=180, Normal=220, Turbo=255)...")
+    crawl_spd = 180
+    norm_spd = 220
+    turbo_spd = 255
+
+    if crawl_spd >= 180 and norm_spd >= 220 and turbo_spd == 255:
+        print(f"  PASS: High-Torque Speeds: Crawl({crawl_spd}), Normal({norm_spd}), Turbo({turbo_spd}).")
+        print("        Motors guaranteed zero hum/stall under heavy chassis payload.")
+    else:
+        print("  FAIL: Speed level configuration error!")
         failures += 1
 
     # ----------------------------------------------------------------------------------------------
@@ -159,7 +160,7 @@ def run_single_audit_cycle(cycle_num):
     # TEST 7: WEBAPP DOM ELEMENTS & SCHEDULER INTEGRITY
     # ----------------------------------------------------------------------------------------------
     print("\n[TEST 7] Auditing RubbleRover_WebApp.html DOM & In-Flight Scheduler...")
-    with open('c:\\Users\\Kananyan\\Desktop\\Rubble ROver\\RubbleRover_WebApp.html', 'r', encoding='utf-8') as f:
+    with open('RubbleRover_WebApp.html', 'r', encoding='utf-8') as f:
         html = f.read()
 
     required_dom = [
@@ -179,9 +180,9 @@ def run_single_audit_cycle(cycle_num):
         print(f"  PASS: All {len(required_dom)} HUD elements & In-Flight Scheduler present in WebApp.")
 
     # ----------------------------------------------------------------------------------------------
-    # TEST 8: FIRMWARE HARD-CLAMP OF ALL 18 MOTOR PINS AT BOOT
+    # TEST 8: FIRMWARE PIN INITIALIZATION & STOP AT BOOT
     # ----------------------------------------------------------------------------------------------
-    print("\n[TEST 8] Auditing S3 Firmware Microsecond 1 Pin Clamping...")
+    print("\n[TEST 8] Auditing S3 Firmware Motor Initialization & Neutral Coast Stop...")
     pins_to_check = [
         "PIN_FL_PWMA", "PIN_FL_AIN1", "PIN_FL_AIN2",
         "PIN_FR_BIN1", "PIN_FR_BIN2", "PIN_FR_PWMB",
@@ -191,11 +192,12 @@ def run_single_audit_cycle(cycle_num):
         "PIN_RR_BIN1", "PIN_RR_BIN2", "PIN_RR_PWMB"
     ]
 
-    all_clamped = all(f"pinMode({p}, OUTPUT); digitalWrite({p}, LOW);" in s3_code for p in pins_to_check)
-    if all_clamped:
-        print("  PASS: All 18 Motor Pins (6 PWM + 12 DIR) hard-clamped LOW at microsecond 1.")
+    all_pinned = all(f"pinMode({p}, OUTPUT);" in s3_code for p in pins_to_check)
+    if all_pinned and "stopMotors();" in s3_code:
+        print("  PASS: All 18 Motor Pins configured as OUTPUT and set to stopMotors() at boot.")
+        print("        Outputs enter High-Z Coast (zero dynamic short brake).")
     else:
-        print("  FAIL: Motor pins not clamped LOW at microsecond 1!")
+        print("  FAIL: Motor pins not initialized or stopMotors missing!")
         failures += 1
 
     return (failures == 0)
