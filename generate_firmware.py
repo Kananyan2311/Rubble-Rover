@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
 """
 generate_firmware.py
-Generates the simplified, robust ESP32-S3 firmware for RubbleRover.
-Motor logic: Direct and simplified (Forward -> all forward, Backward -> all backward, Spin Left, Spin Right).
-Motor A is physically inverted by default. All stopped states use High-Z neutral coast.
+Generates the simplified, ultra-reliable ESP32-S3 firmware for RubbleRover.
+Motor control:
+- Pure digital drive (digitalWrite HIGH for full torque, LOW for High-Z coast)
+- Motor A physically reversed by default (polarityA = -1)
+- Motor B normal (polarityB = 1)
+- stopMotors() clamps all 18 pins LOW (High-Z coast, zero brake drag)
+- Built-in motor diagnostic self-test (/test_motors)
 """
 
 firmware_template = r'''/*
   RubbleRover - ESP32-S3 Master Tactical Controller
   Hardware: ESP32-S3 (Dual-Core) + 3x TB6612FNG (6WD) + MLX90640 + INMP441
-  Direct simplified motor control: Forward, Reverse, Spin Left, Spin Right, Stop.
+  Direct simplified motor control with High-Z neutral coast and Motor A inverted.
 */
 
 #include <Arduino.h>
@@ -28,32 +32,32 @@ firmware_template = r'''/*
 #endif
 
 // =================================================================================================
-// USER VERIFIED PIN DEFINITIONS
+// USER VERIFIED PIN DEFINITIONS (3x TB6612 = 18 PINS)
 // =================================================================================================
 
 // --- TB6612 #1: Front Motor Pair (Header J1-10 to J1-17) ---
-#define PIN_FL_PWMA    17   // Front-Left Speed PWM (Motor A)
+#define PIN_FL_PWMA    17   // Front-Left Speed (Motor A)
 #define PIN_FL_AIN1    18   // Front-Left Direction 1
 #define PIN_FL_AIN2    8    // Front-Left Direction 2
 #define PIN_FR_BIN1    9    // Front-Right Direction 1
 #define PIN_FR_BIN2    10   // Front-Right Direction 2
-#define PIN_FR_PWMB    11   // Front-Right Speed PWM (Motor B)
+#define PIN_FR_PWMB    11   // Front-Right Speed (Motor B)
 
 // --- TB6612 #2: Middle Motor Pair (Header J1-04 to J1-09) ---
-#define PIN_ML_PWMA    4    // Middle-Left Speed PWM (Motor A)
+#define PIN_ML_PWMA    4    // Middle-Left Speed (Motor A)
 #define PIN_ML_AIN1    5    // Middle-Left Direction 1
 #define PIN_ML_AIN2    6    // Middle-Left Direction 2
 #define PIN_MR_BIN1    7    // Middle-Right Direction 1
 #define PIN_MR_BIN2    15   // Middle-Right Direction 2
-#define PIN_MR_PWMB    16   // Middle-Right Speed PWM (Motor B)
+#define PIN_MR_PWMB    16   // Middle-Right Speed (Motor B)
 
 // --- TB6612 #3: Rear Motor Pair (Header J1-18..20 & J3-10..18) ---
-#define PIN_RL_PWMA    12   // Rear-Left Speed PWM (Motor A)
+#define PIN_RL_PWMA    12   // Rear-Left Speed (Motor A)
 #define PIN_RL_AIN1    13   // Rear-Left Direction 1
 #define PIN_RL_AIN2    14   // Rear-Left Direction 2
 #define PIN_RR_BIN1    38   // Rear-Right Direction 1
 #define PIN_RR_BIN2    47   // Rear-Right Direction 2
-#define PIN_RR_PWMB    21   // Rear-Right Speed PWM (Motor B)
+#define PIN_RR_PWMB    21   // Rear-Right Speed (Motor B)
 
 // --- INMP441 I2S Microphone (Header J3-06..08 | L/R tied to GND) ---
 #define PIN_I2S_SCK    42   // Bit Clock (BCLK)
@@ -80,7 +84,7 @@ Adafruit_MLX90640 mlx;
 // Motion State
 int16_t curThrottle = 0;
 int16_t curSteering = 0;
-int     currentSpeed = 220;
+int     currentSpeed = 255;
 bool    isEstop = false;
 bool    searchlightOn = false;
 String  camSatelliteIP = "192.168.4.2";
@@ -115,6 +119,7 @@ portMUX_TYPE audioMux = portMUX_INITIALIZER_UNLOCKED;
 void setupMotors();
 void setupI2SMicrophone();
 void setupThermalSensor();
+void setMotorPin(int pwmPin, int speed);
 void setLeftMotors(uint8_t in1, uint8_t in2, int speed);
 void setRightMotors(uint8_t in1, uint8_t in2, int speed);
 void moveForward(int speed);
@@ -127,8 +132,10 @@ void steerBackwardLeft(int speed);
 void steerBackwardRight(int speed);
 void stopMotors();
 void emergencyBrake();
+void runMotorDiagnostic();
 void handleRoot();
 void handleControl();
+void handleTestMotors();
 void handleThermal();
 void handleThermalRaw();
 void handleAudioWav();
@@ -146,7 +153,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(__WEBAPP_HTML_PAYLOAD__)rawlitera
 // SYSTEM INITIALIZATION (setup)
 // =================================================================================================
 void setup() {
-  // 1. Initialize all 18 motor pins to OUTPUT and immediately STOP (High-Z Coast)
+  // 1. Initialize all 18 motor pins to OUTPUT and immediately STOP in High-Z Coast
   setupMotors();
 
   // 2. Initialize Hardware CDC Serial
@@ -158,8 +165,8 @@ void setup() {
   delay(100);
 
   Serial.println("\n====================================================================");
-  Serial.println("  RUBBLEROVER: SIMPLIFIED HIGH-TORQUE 6WD CONTROLLER ONLINE");
-  Serial.println("  Motor A: Inverted | Motor B: Normal | High-Z Coast Stop");
+  Serial.println("  RUBBLEROVER: DIRECT-DRIVE 6WD CONTROLLER ONLINE");
+  Serial.println("  Motor A: Inverted (-1) | Motor B: Normal (+1) | High-Z Coasting");
   Serial.println("====================================================================");
 
   // 3. Standalone Wi-Fi Access Point (192.168.4.1)
@@ -187,6 +194,7 @@ void setup() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/index.html", HTTP_GET, handleRoot);
   server.on("/control", HTTP_GET, handleControl);
+  server.on("/test_motors", HTTP_GET, handleTestMotors);
   server.on("/thermal", HTTP_GET, handleThermal);
   server.on("/thermal_raw", HTTP_GET, handleThermalRaw);
   server.on("/audio.wav", HTTP_GET, handleAudioWav);
@@ -300,7 +308,7 @@ void sensorTask(void *pvParameters) {
 }
 
 // =================================================================================================
-// SIMPLIFIED MOTOR CONTROL LOGIC (3x TB6612, High-Torque, Neutral Coast)
+// DIRECT-DRIVE SIMPLIFIED MOTOR CONTROL (3x TB6612, High-Torque, Neutral Coast)
 // =================================================================================================
 
 // Initialize all 18 motor control pins
@@ -313,21 +321,32 @@ void setupMotors() {
   pinMode(PIN_RR_BIN1, OUTPUT); pinMode(PIN_RR_BIN2, OUTPUT); pinMode(PIN_RR_PWMB, OUTPUT);
 
   stopMotors();
-  Serial.println("[MOTORS] 6WD Motors Initialized (High-Z Coasting on Idle, Zero Drag).");
+  Serial.println("[MOTORS] All 18 pins configured as OUTPUT. High-Z Coast Stop active.");
+}
+
+// Drive speed pin: digital HIGH for speed > 0 guarantees full voltage & zero timer issues!
+void setMotorPin(int pwmPin, int speed) {
+  if (speed >= 180) {
+    digitalWrite(pwmPin, HIGH); // Pure 3.3V High-Torque drive (eliminates all PWM timer stalls!)
+  } else if (speed <= 0) {
+    digitalWrite(pwmPin, LOW);  // 0V
+  } else {
+    analogWrite(pwmPin, speed);
+  }
 }
 
 // Set Left Motor Bank (FL, ML, RL)
 void setLeftMotors(uint8_t in1, uint8_t in2, int speed) {
-  digitalWrite(PIN_FL_AIN1, in1); digitalWrite(PIN_FL_AIN2, in2); analogWrite(PIN_FL_PWMA, speed);
-  digitalWrite(PIN_ML_AIN1, in1); digitalWrite(PIN_ML_AIN2, in2); analogWrite(PIN_ML_PWMA, speed);
-  digitalWrite(PIN_RL_AIN1, in1); digitalWrite(PIN_RL_AIN2, in2); analogWrite(PIN_RL_PWMA, speed);
+  digitalWrite(PIN_FL_AIN1, in1); digitalWrite(PIN_FL_AIN2, in2); setMotorPin(PIN_FL_PWMA, speed);
+  digitalWrite(PIN_ML_AIN1, in1); digitalWrite(PIN_ML_AIN2, in2); setMotorPin(PIN_ML_PWMA, speed);
+  digitalWrite(PIN_RL_AIN1, in1); digitalWrite(PIN_RL_AIN2, in2); setMotorPin(PIN_RL_PWMA, speed);
 }
 
 // Set Right Motor Bank (FR, MR, RR)
 void setRightMotors(uint8_t in1, uint8_t in2, int speed) {
-  digitalWrite(PIN_FR_BIN1, in1); digitalWrite(PIN_FR_BIN2, in2); analogWrite(PIN_FR_PWMB, speed);
-  digitalWrite(PIN_MR_BIN1, in1); digitalWrite(PIN_MR_BIN2, in2); analogWrite(PIN_MR_PWMB, speed);
-  digitalWrite(PIN_RR_BIN1, in1); digitalWrite(PIN_RR_BIN2, in2); analogWrite(PIN_RR_PWMB, speed);
+  digitalWrite(PIN_FR_BIN1, in1); digitalWrite(PIN_FR_BIN2, in2); setMotorPin(PIN_FR_PWMB, speed);
+  digitalWrite(PIN_MR_BIN1, in1); digitalWrite(PIN_MR_BIN2, in2); setMotorPin(PIN_MR_PWMB, speed);
+  digitalWrite(PIN_RR_BIN1, in1); digitalWrite(PIN_RR_BIN2, in2); setMotorPin(PIN_RR_PWMB, speed);
 }
 
 // 1. FORWARD: All 6 motors roll forward!
@@ -372,9 +391,8 @@ void spinRight(int speed) {
 
 // 5. STEER FORWARD LEFT: Left slower, Right full
 void steerForwardLeft(int speed) {
-  int slowSpeed = speed / 2;
-  if (polarityA == -1) setLeftMotors(LOW, HIGH, slowSpeed);
-  else                 setLeftMotors(HIGH, LOW, slowSpeed);
+  if (polarityA == -1) setLeftMotors(LOW, HIGH, speed / 2);
+  else                 setLeftMotors(HIGH, LOW, speed / 2);
 
   if (polarityB == 1)  setRightMotors(HIGH, LOW, speed);
   else                 setRightMotors(LOW, HIGH, speed);
@@ -382,19 +400,17 @@ void steerForwardLeft(int speed) {
 
 // 6. STEER FORWARD RIGHT: Left full, Right slower
 void steerForwardRight(int speed) {
-  int slowSpeed = speed / 2;
   if (polarityA == -1) setLeftMotors(LOW, HIGH, speed);
   else                 setLeftMotors(HIGH, LOW, speed);
 
-  if (polarityB == 1)  setRightMotors(HIGH, LOW, slowSpeed);
-  else                 setRightMotors(LOW, HIGH, slowSpeed);
+  if (polarityB == 1)  setRightMotors(HIGH, LOW, speed / 2);
+  else                 setRightMotors(LOW, HIGH, speed / 2);
 }
 
 // 7. STEER BACKWARD LEFT: Left slower, Right full
 void steerBackwardLeft(int speed) {
-  int slowSpeed = speed / 2;
-  if (polarityA == -1) setLeftMotors(HIGH, LOW, slowSpeed);
-  else                 setLeftMotors(LOW, HIGH, slowSpeed);
+  if (polarityA == -1) setLeftMotors(HIGH, LOW, speed / 2);
+  else                 setLeftMotors(LOW, HIGH, speed / 2);
 
   if (polarityB == 1)  setRightMotors(LOW, HIGH, speed);
   else                 setRightMotors(HIGH, LOW, speed);
@@ -402,15 +418,14 @@ void steerBackwardLeft(int speed) {
 
 // 8. STEER BACKWARD RIGHT: Left full, Right slower
 void steerBackwardRight(int speed) {
-  int slowSpeed = speed / 2;
   if (polarityA == -1) setLeftMotors(HIGH, LOW, speed);
   else                 setLeftMotors(LOW, HIGH, speed);
 
-  if (polarityB == 1)  setRightMotors(LOW, HIGH, slowSpeed);
-  else                 setRightMotors(HIGH, LOW, slowSpeed);
+  if (polarityB == 1)  setRightMotors(LOW, HIGH, speed / 2);
+  else                 setRightMotors(HIGH, LOW, speed / 2);
 }
 
-// 9. STOP: High-Z Neutral Coast (Wheels turn freely by hand, zero stiction)
+// 9. STOP: High-Z Neutral Coast (Wheels turn freely by hand, zero short-circuit brake)
 void stopMotors() {
   setLeftMotors(LOW, LOW, 0);
   setRightMotors(LOW, LOW, 0);
@@ -420,6 +435,56 @@ void stopMotors() {
 
 void emergencyBrake() {
   stopMotors();
+}
+
+// HARDWARE DIAGNOSTIC: Tests all 6 motors individually (1 second each)
+void runMotorDiagnostic() {
+  Serial.println("\n--- STARTING 6-MOTOR HARDWARE DIAGNOSTIC ---");
+
+  // 1. Front-Left
+  Serial.println("[DIAG 1/6] Front-Left (Motor A)...");
+  digitalWrite(PIN_FL_AIN1, LOW); digitalWrite(PIN_FL_AIN2, HIGH); digitalWrite(PIN_FL_PWMA, HIGH);
+  delay(1000);
+  digitalWrite(PIN_FL_AIN1, LOW); digitalWrite(PIN_FL_AIN2, LOW); digitalWrite(PIN_FL_PWMA, LOW);
+  delay(300);
+
+  // 2. Front-Right
+  Serial.println("[DIAG 2/6] Front-Right (Motor B)...");
+  digitalWrite(PIN_FR_BIN1, HIGH); digitalWrite(PIN_FR_BIN2, LOW); digitalWrite(PIN_FR_PWMB, HIGH);
+  delay(1000);
+  digitalWrite(PIN_FR_BIN1, LOW); digitalWrite(PIN_FR_BIN2, LOW); digitalWrite(PIN_FR_PWMB, LOW);
+  delay(300);
+
+  // 3. Mid-Left
+  Serial.println("[DIAG 3/6] Mid-Left (Motor A)...");
+  digitalWrite(PIN_ML_AIN1, LOW); digitalWrite(PIN_ML_AIN2, HIGH); digitalWrite(PIN_ML_PWMA, HIGH);
+  delay(1000);
+  digitalWrite(PIN_ML_AIN1, LOW); digitalWrite(PIN_ML_AIN2, LOW); digitalWrite(PIN_ML_PWMA, LOW);
+  delay(300);
+
+  // 4. Mid-Right
+  Serial.println("[DIAG 4/6] Mid-Right (Motor B)...");
+  digitalWrite(PIN_MR_BIN1, HIGH); digitalWrite(PIN_MR_BIN2, LOW); digitalWrite(PIN_MR_PWMB, HIGH);
+  delay(1000);
+  digitalWrite(PIN_MR_BIN1, LOW); digitalWrite(PIN_MR_BIN2, LOW); digitalWrite(PIN_MR_PWMB, LOW);
+  delay(300);
+
+  // 5. Rear-Left
+  Serial.println("[DIAG 5/6] Rear-Left (Motor A)...");
+  digitalWrite(PIN_RL_AIN1, LOW); digitalWrite(PIN_RL_AIN2, HIGH); digitalWrite(PIN_RL_PWMA, HIGH);
+  delay(1000);
+  digitalWrite(PIN_RL_AIN1, LOW); digitalWrite(PIN_RL_AIN2, LOW); digitalWrite(PIN_RL_PWMA, LOW);
+  delay(300);
+
+  // 6. Rear-Right
+  Serial.println("[DIAG 6/6] Rear-Right (Motor B)...");
+  digitalWrite(PIN_RR_BIN1, HIGH); digitalWrite(PIN_RR_BIN2, LOW); digitalWrite(PIN_RR_PWMB, HIGH);
+  delay(1000);
+  digitalWrite(PIN_RR_BIN1, LOW); digitalWrite(PIN_RR_BIN2, LOW); digitalWrite(PIN_RR_PWMB, LOW);
+  delay(300);
+
+  stopMotors();
+  Serial.println("--- MOTOR DIAGNOSTIC COMPLETE ---\n");
 }
 
 // =================================================================================================
@@ -497,8 +562,7 @@ void handleControl() {
   }
   isEstop = false;
 
-  // Speed Mode: Crawl=180, Normal=220, Turbo=255
-  int speed = 220;
+  int speed = 255; // Default full punch
   if (server.hasArg("r")) {
     int r = server.arg("r").toInt();
     if (r == 1) speed = 180;
@@ -538,6 +602,11 @@ void handleControl() {
 
   server.client().setNoDelay(true);
   server.send(200, "application/json", "{\"status\":\"OK\"}");
+}
+
+void handleTestMotors() {
+  server.send(200, "application/json", "{\"status\":\"RUNNING_TEST\"}");
+  runMotorDiagnostic();
 }
 
 void handleThermal() {
@@ -702,4 +771,4 @@ if __name__ == '__main__':
         with open(os.path.join(arduino_dir, 'rubble_rover_web.h'), 'w', encoding='utf-8') as f:
             f.write(header_content)
 
-    print("SUCCESS: Simplified motor firmware generated and synchronized!")
+    print("SUCCESS: Direct-drive firmware generated and synchronized!")

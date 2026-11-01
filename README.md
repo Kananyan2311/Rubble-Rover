@@ -122,11 +122,26 @@ Open the **Library Manager** in Arduino IDE and install:
 
 ## Repository Files
 
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md): **Comprehensive troubleshooting & hardware debugging guide.**
 - `RubbleRover_S3_MotorController/`: Master controller sketch for ESP32-S3.
 - `RubbleRover_CAM_SurveillanceHub/`: Video streamer sketch for ESP32-CAM.
 - `RubbleRover_WebApp.html`: Standalone GameBoy GCS interface.
 - `test_verification_suite.py`: Automated 5-cycle verification audit.
 - `ESP32_S3_ROVER_PINOUT.csv`: Complete pin assignment table.
+
+---
+
+## Troubleshooting
+
+Encountering an issue? Refer to the full [TROUBLESHOOTING.md](TROUBLESHOOTING.md) guide.
+
+**Quick-Fix Summary:**
+- **ESP32-S3 stuck in download mode:** Unplug USB, release `BOOT` button, replug, click `RST` once.
+- **Serial Monitor blank:** Set **Tools → USB CDC On Boot → Enabled** in Arduino IDE and re-flash.
+- **Motors stiff / hard to turn:** Upload direct-drive firmware; `stopMotors()` sets pins LOW for neutral High-Z coast.
+- **Motors won't move:** Ensure TB6612 `STBY` is wired to 3.3V, VM battery is connected, and battery ground is tied to ESP32 GND.
+- **Web App won't open at 192.168.4.1:** Turn OFF mobile/cellular data on your phone so it doesn't bypass the rover AP.
+- **ESP32-CAM stream offline:** Remove programming jumper on GPIO 0; ensure camera is powered from 5V rail.
 
 ---
 
