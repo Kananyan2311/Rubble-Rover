@@ -387,3 +387,165 @@ Use this visual guide when you see specific error strings or status messages in 
      [WIFI-STA] CONNECTED in 240ms! Node IP: 192.168.4.2
      [HANDSHAKE] Registered 192.168.4.2 with ESP32-S3 Master!
      ```
+---
+
+### 12. `wifi: Station disconnected from AP, reason=202` (or `reason=15`)
+* **What you see:**
+  ```text
+  wifi: Station connected to AP, AID=1
+  wifi: Station disconnected from AP, reason=202
+  ```
+* **Meaning:** A client device (smartphone, tablet, or ESP32-CAM) attempted to connect to `RubbleRover-Tactical-AP`, but was immediately kicked off or failed the 4-way WPA2 handshake.
+* **Why it happens:**
+  1. `reason=202` indicates an **incorrect Wi-Fi password** (`AUTH_FAIL`).
+  2. `reason=15` indicates a 4-way handshake timeout (often caused by "Randomized Private MAC" on iOS/Android).
+* **Instant Fix:**
+  1. Verify the password: **`RubbleRover2026`** (case-sensitive).
+  2. On your phone: Open Wi-Fi settings for `RubbleRover-Tactical-AP` → Change **"MAC Address Type"** from *Randomized MAC* to ***Phone / Device MAC***.
+  3. Bring the device closer to the rover's antenna.
+
+---
+
+### 13. `CORRUPT HEAP: multi_heap.c:xxx ... abort() was called`
+* **What you see:**
+  ```text
+  CORRUPT HEAP: multi_heap.c:431 detected at 0x3fc94a20
+  abort() was called at PC 0x40378bc5 on core 0
+  Backtrace: 0x40375a11 0x40378bc5 0x42004210 ...
+  ```
+* **Meaning:** Fatal heap memory corruption (buffer overflow). A FreeRTOS task or interrupt handler wrote data beyond the bounds of an allocated array.
+* **Why it happens:** Usually happens if dynamic memory allocation (`String`, `malloc`, `new`) is called inside high-frequency sensor loops (Core 0).
+* **Instant Fix:**
+  1. Our direct-drive firmware uses 100% **static pre-allocated buffers** (`float thermalPixels[768]`, `int16_t audioSliceBuffer[2048]`), eliminating heap fragmentation.
+  2. Flash the latest firmware version from `sketch_nov1a.ino` / `RubbleRover_S3_MotorController.ino`.
+
+---
+
+### 14. `task_wdt: Task watchdog got triggered... IDLE0 (CPU 0)`
+* **What you see:**
+  ```text
+  E (10432) task_wdt: Task watchdog got triggered. The following tasks did not feed the watchdog:
+  E (10432) task_wdt:  - IDLE0 (CPU 0)
+  Tasks currently running:
+  CPU 0: SensorTaskCore0
+  CPU 1: loopTask
+  ```
+* **Meaning:** The FreeRTOS hardware task watchdog reset the chip because CPU 0 was monopolized in a tight infinite loop without yielding to the background IDLE task for >5 seconds.
+* **Why it happens:** The sensor task on Core 0 hung while waiting for I2C clock-stretching or had no delay.
+* **Instant Fix:**
+  1. Our firmware incorporates `Wire.setTimeOut(50)` so I2C reads never hang.
+  2. Ensure `vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(60));` is present at the bottom of `sensorTask` to feed the watchdog every 60 ms.
+
+---
+
+### 15. `rst:0x3 (RTC_SW_SYS_RST)` or `rebooting...` in a Rapid Loop
+* **What you see:**
+  ```text
+  rst:0x3 (RTC_SW_SYS_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)
+  ...
+  rst:0x3 (RTC_SW_SYS_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)
+  ```
+* **Meaning:** The ESP32 is caught in an infinite bootloop caused by a software crash occurring during `setup()`.
+* **Why it happens:**
+  1. Peripheral initialization collision (e.g. attempting to start Wi-Fi, I2S, or I2C on reserved strapping pins GPIO 0, 3, 45, 46).
+  2. Calling `Serial.print` before `Serial.begin`.
+* **Instant Fix:**
+  1. Enter manual bootloader mode: Hold `BOOT` button → click `RST` → release `BOOT`.
+  2. In Arduino IDE, click **Upload** with the latest vetted firmware.
+  3. Once upload completes, click **`RST` once**.
+
+---
+
+### 16. ESP32-CAM: `E (xxxx) camera: Camera probe failed with error 0x20002`
+* **What you see:**
+  ```text
+  E (1254) camera: Camera probe failed with error 0x20002
+  [FATAL] Camera initialization failed!
+  ```
+* **Meaning:** `0x20002` = `ESP_ERR_NOT_FOUND`. The ESP32-CAM scanned the SCCB/I2C camera bus on GPIO 26 (SDA) and GPIO 27 (SCL), but received no acknowledgment from the OV2640 sensor chip.
+* **Why it happens:**
+  1. The flexible gold ribbon cable of the camera module is unplugged or crooked.
+  2. The `GPIO 0` to `GND` jumper used during flashing was left attached.
+* **Instant Fix:**
+  1. **Remove the GPIO 0 jumper wire!** (GPIO 0 shares circuitry with camera clock lines).
+  2. Carefully open the camera socket latch, reseat the gold ribbon contacts facing downwards, and snap the latch shut.
+  3. Press `RST` on the camera board.
+
+---
+
+### 17. `[WIFI-AP] Online!` but `[HEARTBEAT] Clients:0` Never Increases
+* **What you see:**
+  ```text
+  [WIFI-AP] Online! SSID: RubbleRover-Tactical-AP | IP: 192.168.4.1
+  [HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:4%) | IP:192.168.4.1
+  [HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:4%) | IP:192.168.4.1
+  ```
+* **Meaning:** The rover SoftAP is active, but your phone/PC has not successfully joined the network (or disconnected immediately).
+* **Why it happens:** Android and iOS smartphones test whether an AP has Internet access. When they detect no Internet, they silently switch back to 4G/5G mobile data and disconnect from the rover!
+* **Instant Fix:**
+  1. **Turn OFF Mobile / Cellular Data** in your smartphone settings.
+  2. Reconnect to `RubbleRover-Tactical-AP`.
+  3. When the prompt pops up: *"No internet access. Stay connected?"* → Select **YES / Keep Connection**.
+  4. The Serial Monitor will immediately print: `[HEARTBEAT] Clients:1`!
+
+---
+
+### 18. `flash read err, 1000` or `ets_main.c 371`
+* **What you see:**
+  ```text
+  flash read err, 1000
+  ets_main.c 371
+  ets Jun  8 2016 00:22:57
+  ```
+* **Meaning:** The ESP32 hardware ROM bootloader failed to read user application code from the SPI flash memory.
+* **Why it happens:** Flash mode mismatch in Arduino IDE (e.g. board uses Quad SPI, but sketch was flashed with Octal SPI, or vice versa).
+* **Instant Fix:**
+  1. In Arduino IDE, open **Tools → Flash Mode**.
+  2. Change it to **`QIO 80MHz`** (or **`DIO 80MHz`** for generic modules).
+  3. In **Tools → PSRAM**, select **`Disabled`** (or `OPI PSRAM` only if your board specifically has Octal PSRAM).
+  4. Re-flash the sketch.
+
+---
+
+### 19. `[HTTP] 404 Not Found: /generate_204` or `/hotspot-detect.html`
+* **What you see:**
+  ```text
+  [HTTP] 404 Not Found: /generate_204
+  [HTTP] 404 Not Found: /hotspot-detect.html
+  [HTTP] 404 Not Found: /ncsi.txt
+  ```
+* **Meaning:** These are automatic background "Captive Portal Detection" requests sent by Apple iOS, Android, and Windows when they connect to any Wi-Fi AP.
+* **Action:** **Completely harmless!** In fact, this confirms that your phone is communicating with the ESP32-S3 web server on Port 80. Open your browser and navigate directly to `http://192.168.4.1`.
+
+---
+
+### 20. `[LIGHT] Searchlight LED state: 1` but Flash LED Remains Dark
+* **What you see:**
+  ```text
+  [LIGHT] Searchlight LED state: 1
+  ```
+  The Serial Monitor confirms the searchlight command was received, but the high-power white LED on the ESP32-CAM board does not light up.
+* **Why it happens:**
+  1. The onboard high-power flash LED on ESP32-CAM draws up to 150 mA. If the 5V power supply cannot supply enough current, the LED driver transistor won't saturate.
+  2. Power supply brownout protection.
+* **Instant Fix:**
+  1. Power the ESP32-CAM from a **5V 2A power source** (do not power it from the 3.3V pin).
+  2. Ensure the camera board GND is connected to the common system ground.
+
+---
+
+### 21. `[DIAG 1/6] Front-Left (Motor A)...` Motor Whines/Buzzes but Wheel Does Not Spin
+* **What you see:**
+  ```text
+  --- STARTING 6-MOTOR HARDWARE DIAGNOSTIC ---
+  [DIAG 1/6] Front-Left (Motor A)...
+  ```
+  You hear a high-pitched motor buzz/whine from the gearbox, but the wheel does not physically turn.
+* **Meaning:** The TB6612 H-bridge driver and ESP32 GPIOs are working 100% correctly, but the motor does not have enough starting breakaway torque to overcome gearbox/chassis friction.
+* **Why it happens:**
+  1. Motor battery voltage has sagged below 6.0V.
+  2. Chassis axle or gearbox is mechanically jammed by rubble, dirt, or over-tightened mounting screws.
+* **Instant Fix:**
+  1. Recharge the motor battery pack ($>7.4\text{V}$ for a 2S LiPo).
+  2. With the rover turned OFF, turn each wheel by hand to verify that all gearboxes spin freely without mechanical binding.
+  3. On the WebApp HUD, click the speed selector button to switch from **Crawl (180)** to **Turbo (255)** for full-voltage breakaway torque.
