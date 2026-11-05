@@ -223,6 +223,7 @@ Encountering an issue? Refer to the full [TROUBLESHOOTING.md](TROUBLESHOOTING.md
 - **Motors won't move:** Ensure TB6612 `STBY` is wired to 3.3V, VM battery is connected, and battery ground is tied to ESP32 GND.
 - **Web App won't open at 192.168.4.1:** Turn OFF mobile/cellular data on your phone so it doesn't bypass the rover AP.
 - **ESP32-CAM stream offline:** Remove programming jumper on GPIO 0; ensure camera is powered from 5V rail.
+- **Serial Monitor Error Decoder:** See [TROUBLESHOOTING.md Section 9](TROUBLESHOOTING.md#9-serial-monitor-error-message-decoder-what-if-i-see-this) for exact error string translations (Brownout, Guru Meditation, I2C timeouts, gibberish, and camera errors).
 
 ---
 
