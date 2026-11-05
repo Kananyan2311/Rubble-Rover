@@ -64,14 +64,13 @@ Built with **ESP32-S3** (Master Controller & Sensor Hub) + **ESP32-CAM** (Optica
 ### 2. Sensors (Header J3)
 | Sensor | Net | ESP32-S3 Pin | Notes |
 |---|---|---|---|
-| **MLX90640** | `SCL` | **GPIO 1** | I2C Clock (with 4.7k pull-up since it is a module the pull-up is not needed) |
-| **MLX90640** | `SDA` | **GPIO 2** | I2C Data (with 4.7k pull-up since it is a module the pull-up is not needed) |
+| **MLX90640** | `SCL` | **GPIO 1** | I2C Clock (with 4.7k pull-up) |
+| **MLX90640** | `SDA` | **GPIO 2** | I2C Data (with 4.7k pull-up) |
 | **INMP441** | `SCK` | **GPIO 42** | I2S Bit Clock (BCLK) |
 | **INMP441** | `WS` | **GPIO 41** | I2S Word Select (LRCK) |
 | **INMP441** | `SD` | **GPIO 40** | I2S Serial Data (DIN) |
 | **INMP441** | `L/R` | **GND** | Tied to GND (Left channel) |
 
-### 3. Servos (Disconnected due to being not needed anymore)
 ---
 
 ## Quick Setup & Flashing
@@ -202,11 +201,35 @@ When powering on the ESP32-CAM (with GPIO 0 jumper removed), its Serial Monitor 
 
 ---
 
+## Firmware Edition 2: Dual Wi-Fi Router + AP Mode (`Firmware_v2_Router_And_AP/`)
+
+If you want both the **ESP32-S3 Motor Controller** and the **ESP32-CAM Surveillance Hub** to operate on independent connections—capable of joining a **Wi-Fi Router / Hotspot (`STA`)** while simultaneously broadcasting their own **Access Points (`AP`)**—use the 2nd firmware folder:
+
+### 1. `Firmware_v2_Router_And_AP/RubbleRover_S3_MotorController_v2/`
+- **Simultaneous Router + AP (`WIFI_AP_STA`):**
+  - Broadcasts **`RubbleRover-Tactical-AP`** (`RubbleRover2026`) at `http://192.168.4.1`.
+  - Simultaneously connects to your **Wi-Fi Router** (`routerSSID` / `routerPass` in the code, or click the top Wi-Fi badge on the HUD to join a router dynamically via `/set_wifi?ssid=...&pass=...`).
+  - Prints both the **AP IP (`192.168.4.1`)** and the **Router IP** in the Serial Monitor every 2.5s:
+    ```text
+    [HEARTBEAT] AP:192.168.4.1 (Clients:0) | Router:192.168.1.105 | MLX:ONLINE | Mic:ONLINE (Lvl:4%)
+    ```
+  - Click the **`CAM IP: ... (SET)`** header on the GameBoy HUD to point the video player to any Camera Router IP or AP IP.
+
+### 2. `Firmware_v2_Router_And_AP/RubbleRover_CAM_SurveillanceHub_v2/`
+- **Independent Dual Wi-Fi Camera Hub (`WIFI_AP_STA`):**
+  - Broadcasts its own standalone Camera Access Point: **`RubbleRover-CAM-AP`** (`RubbleRover2026`) at `http://192.168.5.1`.
+  - Simultaneously connects to your **Wi-Fi Router** (`routerSSID` / `routerPass` in the code, or via the built-in web form at `http://192.168.5.1`).
+  - Includes a built-in **Standalone Camera Surveillance Web Console** at `http://192.168.5.1/` (or `http://<CAM_ROUTER_IP>/`) with live MJPEG stream (`/stream` & `:81/stream`), Searchlight toggle (`/light`), and Router Wi-Fi setup.
+
+---
+
 ## Repository Files
 
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md): **Comprehensive troubleshooting & hardware debugging guide.**
-- `RubbleRover_S3_MotorController/`: Master controller sketch for ESP32-S3 (`.ino` + `rubble_rover_web.h`).
-- `RubbleRover_CAM_SurveillanceHub/`: Video streamer sketch for ESP32-CAM (`.ino`).
+- `RubbleRover_S3_MotorController/`: **Edition 1 (Direct AP)** Master controller sketch for ESP32-S3.
+- `RubbleRover_CAM_SurveillanceHub/`: **Edition 1 (Direct S3 Handshake)** Video streamer sketch for ESP32-CAM.
+- `Firmware_v2_Router_And_AP/RubbleRover_S3_MotorController_v2/`: **Edition 2 (Router + AP)** Dual Wi-Fi Master controller sketch for ESP32-S3.
+- `Firmware_v2_Router_And_AP/RubbleRover_CAM_SurveillanceHub_v2/`: **Edition 2 (Independent Router + AP)** Standalone Dual Wi-Fi Surveillance sketch for ESP32-CAM.
 - `RubbleRover_WebApp.html`: Standalone GameBoy GCS interface.
 - `ESP32_S3_ROVER_PINOUT.csv`: Complete pin assignment table.
 - `ESP32_S3_ROVER_PINOUT_PCB_GUIDE.txt`: Hardware wiring and PCB routing manual.
@@ -224,6 +247,7 @@ Encountering an issue? Refer to the full [TROUBLESHOOTING.md](TROUBLESHOOTING.md
 - **Motors won't move:** Ensure TB6612 `STBY` is wired to 3.3V, VM battery is connected, and battery ground is tied to ESP32 GND.
 - **Web App won't open at 192.168.4.1:** Turn OFF mobile/cellular data on your phone so it doesn't bypass the rover AP.
 - **ESP32-CAM stream offline:** Remove programming jumper on GPIO 0; ensure camera is powered from 5V rail.
+- **Serial Monitor Error Decoder:** See [TROUBLESHOOTING.md Section 9](TROUBLESHOOTING.md#9-serial-monitor-error-message-decoder-what-if-i-see-this) for exact error string translations (Brownout, Guru Meditation, I2C timeouts, gibberish, and camera errors).
 
 ---
 
