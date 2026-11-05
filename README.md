@@ -64,13 +64,14 @@ Built with **ESP32-S3** (Master Controller & Sensor Hub) + **ESP32-CAM** (Optica
 ### 2. Sensors (Header J3)
 | Sensor | Net | ESP32-S3 Pin | Notes |
 |---|---|---|---|
-| **MLX90640** | `SCL` | **GPIO 1** | I2C Clock (with 4.7k pull-up) |
-| **MLX90640** | `SDA` | **GPIO 2** | I2C Data (with 4.7k pull-up) |
+| **MLX90640** | `SCL` | **GPIO 1** | I2C Clock (with 4.7k pull-up since it is a module the pull-up is not needed) |
+| **MLX90640** | `SDA` | **GPIO 2** | I2C Data (with 4.7k pull-up since it is a module the pull-up is not needed) |
 | **INMP441** | `SCK` | **GPIO 42** | I2S Bit Clock (BCLK) |
 | **INMP441** | `WS` | **GPIO 41** | I2S Word Select (LRCK) |
 | **INMP441** | `SD` | **GPIO 40** | I2S Serial Data (DIN) |
 | **INMP441** | `L/R` | **GND** | Tied to GND (Left channel) |
 
+### 3. Servos (Disconnected due to being not needed anymore)
 ---
 
 ## Quick Setup & Flashing
