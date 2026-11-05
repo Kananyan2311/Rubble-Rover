@@ -1250,21 +1250,25 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 // SYSTEM INITIALIZATION (setup)
 // =================================================================================================
 void setup() {
-  // 1. Initialize all 18 motor pins to OUTPUT and immediately STOP in High-Z Coast
-  setupMotors();
-
-  // 2. Initialize Hardware CDC Serial
+  // 1. Initialize Hardware CDC Serial FIRST
   Serial.begin(115200);
+  #if ARDUINO_USB_CDC_ON_BOOT
+  Serial.setTxTimeoutMs(50);
+  #endif
   unsigned long startSerial = millis();
-  while (!Serial && (millis() - startSerial < 2500)) {
+  while (!Serial && (millis() - startSerial < 2000)) {
     delay(10);
   }
-  delay(100);
+  delay(50);
 
   Serial.println("\n====================================================================");
   Serial.println("  RUBBLEROVER: DIRECT-DRIVE 6WD CONTROLLER ONLINE");
   Serial.println("  Motor A: Inverted (-1) | Motor B: Normal (+1) | High-Z Coasting");
   Serial.println("====================================================================");
+
+  // 2. Initialize all 18 motor pins to OUTPUT and immediately STOP in High-Z Coast
+  setupMotors();
+  Serial.println("[MOTORS] All 18 pins configured as OUTPUT. High-Z Coast Stop active.");
 
   // 3. Standalone Wi-Fi Access Point (192.168.4.1)
   WiFi.persistent(false);
@@ -1418,7 +1422,6 @@ void setupMotors() {
   pinMode(PIN_RR_BIN1, OUTPUT); pinMode(PIN_RR_BIN2, OUTPUT); pinMode(PIN_RR_PWMB, OUTPUT);
 
   stopMotors();
-  Serial.println("[MOTORS] All 18 pins configured as OUTPUT. High-Z Coast Stop active.");
 }
 
 // Drive speed pin: digital HIGH for speed > 0 guarantees full voltage & zero timer issues!
@@ -1610,33 +1613,42 @@ void setupI2SMicrophone() {
 void setupThermalSensor() {
   Serial.println("[I2C] Initializing I2C for MLX90640...");
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 400000);
+  Wire.setTimeOut(50);
 
+  bool detected = false;
   Wire.beginTransmission(0x33);
   byte error = Wire.endTransmission();
   if (error == 0) {
     Serial.println("[I2C] MLX90640 detected at 0x33 (SDA:1, SCL:2)!");
     i2cSwapped = false;
+    detected = true;
   } else {
     Wire.end();
     Wire.begin(PIN_I2C_SCL, PIN_I2C_SDA, 400000);
+    Wire.setTimeOut(50);
     Wire.beginTransmission(0x33);
     if (Wire.endTransmission() == 0) {
       Serial.println("[I2C] MLX90640 detected on swapped pins (SDA:2, SCL:1)!");
       i2cSwapped = true;
+      detected = true;
     } else {
       Wire.end();
       Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 400000);
+      Wire.setTimeOut(50);
       i2cSwapped = false;
+      Serial.println("[I2C] MLX90640 not detected at 0x33 (hot-plug auto-probe active).");
     }
   }
 
-  if (mlx.begin(MLX90640_I2CADDR_DEFAULT, &Wire)) {
+  if (detected && mlx.begin(MLX90640_I2CADDR_DEFAULT, &Wire)) {
     Serial.println("[MLX90640] MLX90640 Initialized Successfully!");
     mlx.setMode(MLX90640_CHESS);
     mlx.setResolution(MLX90640_ADC_18BIT);
     mlx.setRefreshRate(MLX90640_8_HZ);
     Wire.setClock(800000);
     mlxFound = true;
+  } else {
+    mlxFound = false;
   }
 }
 
