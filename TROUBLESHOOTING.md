@@ -1,551 +1,426 @@
-# Rubble Rover Hardware & Firmware Troubleshooting Guide 🛠️
+<div align="center">
 
-This guide covers step-by-step solutions for common issues encountered during flashing, powering, driving, and operating the Rubble Rover.
+# 🛠️ RUBBLE ROVER TROUBLESHOOTING & SERIAL DECODER GUIDE
+### **Step-by-Step Hardware Debugging, Bootloader Recovery & 21 Serial Monitor Error Translations**
+
+[![Back to README](https://img.shields.io/badge/%E2%AC%85%EF%B8%8F_BACK_TO_MAIN_README-121212?style=for-the-badge)](README.md)
+[![Pinout CSV](https://img.shields.io/badge/%F0%9F%93%8C_PINOUT_CSV-4ECCA3?style=for-the-badge&logoColor=black)](ESP32_S3_ROVER_PINOUT.csv)
+[![PCB Guide](https://img.shields.io/badge/%F0%9F%93%90_PCB_MANUAL-FFD21E?style=for-the-badge&logoColor=black)](ESP32_S3_ROVER_PINOUT_PCB_GUIDE.txt)
+[![WebApp HTML](https://img.shields.io/badge/%F0%9F%8E%AE_WEBAPP_UI-9B5DE5?style=for-the-badge)](RubbleRover_WebApp.html)
+
+</div>
+
+---
+
+## 🗂️ Clickable Document & Firmware Access Grid
+
+<table>
+  <tr>
+    <td align="center" width="25%">
+      <a href="README.md">
+        <img src="https://img.shields.io/badge/%F0%9F%93%96_MAIN_README-OPEN-4D96FF?style=for-the-badge" alt="Main README" />
+      </a>
+      <br />
+      <sub><b>System Overview & Setup</b></sub>
+    </td>
+    <td align="center" width="25%">
+      <a href="RubbleRover_S3_MotorController/RubbleRover_S3_MotorController.ino">
+        <img src="https://img.shields.io/badge/%E2%9A%A1_S3_MASTER_v1-OPEN-FF6B6B?style=for-the-badge" alt="S3 v1" />
+      </a>
+      <br />
+      <sub><b>Direct AP Mode (<code>192.168.4.1</code>)</b></sub>
+    </td>
+    <td align="center" width="25%">
+      <a href="RubbleRover_CAM_SurveillanceHub/RubbleRover_CAM_SurveillanceHub.ino">
+        <img src="https://img.shields.io/badge/%F0%9F%93%B7_CAM_HUB_v1-OPEN-4ECCA3?style=for-the-badge" alt="CAM v1" />
+      </a>
+      <br />
+      <sub><b>Direct S3 Link (<code>192.168.4.2</code>)</b></sub>
+    </td>
+    <td align="center" width="25%">
+      <a href="Firmware_v2_Router_And_AP/RubbleRover_S3_MotorController_v2/RubbleRover_S3_MotorController_v2.ino">
+        <img src="https://img.shields.io/badge/%F0%9F%8C%90_DUAL_WIFI_v2-OPEN-F15BB5?style=for-the-badge" alt="Dual WiFi v2" />
+      </a>
+      <br />
+      <sub><b>Router + AP Edition (S3 & CAM)</b></sub>
+    </td>
+  </tr>
+</table>
+
+---
+
+## 🧭 Jump to Troubleshooting Category *(Click Any Badge)*
+
+<div align="center">
+
+[![30s Drill](https://img.shields.io/badge/%E2%9A%A1_30s_Quick_Fix-FFD21E?style=for-the-badge&logoColor=black)](#%EF%B8%8F-the-30-second-quick-fix-drill)
+[![Boot & Upload](https://img.shields.io/badge/1%EF%B8%8F%E2%83%A3_Boot_%26_Upload-FF6B6B?style=for-the-badge)](#-1-esp32-s3-boot--flashing-issues)
+[![Blank Serial](https://img.shields.io/badge/2%EF%B8%8F%E2%83%A3_Blank_Serial_Monitor-4D96FF?style=for-the-badge)](#%EF%B8%8F-2-serial-monitor-issues-blank-screen--no-output)
+[![Motors & TB6612](https://img.shields.io/badge/3%EF%B8%8F%E2%83%A3_Motors_%26_TB6612-4ECCA3?style=for-the-badge&logoColor=black)](#-3-motor--tb6612fng-driver-issues)
+[![Wi-Fi & WebApp](https://img.shields.io/badge/4%EF%B8%8F%E2%83%A3_Wi--Fi_%26_WebApp-9B5DE5?style=for-the-badge)](#-4-wi-fi--web-application-issues)
+[![ESP32-CAM](https://img.shields.io/badge/5%EF%B8%8F%E2%83%A3_ESP32--CAM_Video-F15BB5?style=for-the-badge)](#-5-esp32-cam-video-satellite-issues)
+[![Sensors](https://img.shields.io/badge/6%EF%B8%8F%E2%83%A3_Thermal_%26_Mic-00BBF9?style=for-the-badge)](#-6-sensor-issues-mlx90640--inmp441)
+[![Brownouts](https://img.shields.io/badge/7%EF%B8%8F%E2%83%A3_Power_%26_Brownouts-FF9F1C?style=for-the-badge&logoColor=black)](#-7-power-resets--brownouts-robot-reboots-when-moving)
+[![21 Serial Decoders](https://img.shields.io/badge/%F0%9F%94%8D_9%EF%B8%8F%E2%83%A3_21_SERIAL_ERROR_DECODERS-00F5D4?style=for-the-badge&logoColor=black)](#-9-serial-monitor-error-message-decoder-what-if-i-see-this)
+
+</div>
 
 ---
 
 ## ⚡ The 30-Second Quick-Fix Drill
-If something is unresponsive or behaving erratically, run this quick sequence before changing any wiring or code:
 
-1. **Unplug USB-C**, wait 3 seconds, then **plug it back in**.
-2. **Press and release the `RST` (Reset / EN) button** once on the ESP32-S3.
-3. If using a phone to control the rover: **Turn OFF Cellular / Mobile Data** (prevents phone from ignoring the offline rover AP).
-4. Check the **Battery Switch**: Ensure the motor battery (VM rail, 6V–12V) is switched ON and shares a common Ground with the ESP32-S3.
+> [!TIP]
+> **Before changing any wires or code**, run this 4-step reset sequence—it resolves over **80% of field hiccups** immediately:
+
+1. 🔌 **Unplug USB-C**, wait 3 seconds, then **plug it firmly back in**.
+2. 🔘 **Press and release the `RST` (Reset / EN) button ONCE** on the ESP32-S3 (do *not* hold `BOOT`).
+3. 📱 **Turn OFF Mobile / Cellular Data** on your smartphone (prevents your phone from bypassing the offline rover Wi-Fi AP).
+4. 🔋 **Check the Motor Battery Switch:** Ensure the `VM` motor battery ($6\text{V}–12\text{V}$) is switched **ON** and shares a **Common GND** with the ESP32-S3.
 
 ---
 
-## 1. ESP32-S3 Boot & Flashing Issues
+## 🔴 1. ESP32-S3 Boot & Flashing Issues
 
-### Problem: Stuck in Download Mode (`waiting for download` / `boot:0x0 (DOWNLOAD)`)
-* **Symptom:** In Serial Monitor you see `rst:0x1 (POWERON),boot:0x0 (DOWNLOAD(USB/UART0/1/...))` and your sketch won't execute.
-* **Why it happens:** The ESP32-S3 boots into ROM download mode when `GPIO 0` is pulled LOW during startup (e.g. the `BOOT` button is held down or stuck, or external hardware is pulling GPIO 0 down).
-* **Fix:**
+### 🔸 Problem: Stuck in Download Mode (`waiting for download` / `boot:0x0 (DOWNLOAD)`)
+* **Symptom:** Serial Monitor prints `rst:0x1 (POWERON),boot:0x0 (DOWNLOAD(USB/UART0/1/...))` and your rover code never starts.
+* **Why it happens:** The ESP32-S3 enters ROM bootloader mode whenever `GPIO 0` is held `LOW` during power-up or reset (e.g., the `BOOT` button is stuck or a wire is grounding `GPIO 0`).
+* **Instant Fix:**
   1. Unplug the USB-C cable.
-  2. Ensure nothing is touching the physical `BOOT` button on the board, and no wires are connected to GPIO 0.
-  3. Re-plug USB-C.
-  4. Press the **`RST` button once** (do NOT hold `BOOT`). The board will immediately launch the user application.
+  2. Check that nothing is pressing the physical **`BOOT` button** and no wires touch `GPIO 0`.
+  3. Plug USB-C back in and press the **`RST` button ONCE**.
 
-### Problem: Arduino IDE Fails to Upload (`A fatal error occurred: Failed to connect to ESP32-S3`)
-* **Why it happens:** The PC cannot initiate the automatic serial reset handshake.
-* **Fix (Manual Bootloader Entry):**
+### 🔸 Problem: Arduino IDE Fails to Upload (`Failed to connect to ESP32-S3`)
+* **Fix (Manual Bootloader Entry Combo):**
   1. Hold down the **`BOOT` button** on the ESP32-S3.
-  2. While still holding `BOOT`, press and release the **`RST` button** once.
+  2. While holding `BOOT`, tap and release the **`RST` button** once.
   3. Release the **`BOOT` button**.
-  4. In Arduino IDE, click **Upload**.
-  5. When you see `Leaving... Hard resetting via RTS pin...`, press the **`RST` button once** to start the firmware.
+  4. Click **Upload** in Arduino IDE.
+  5. After upload completes (`Hard resetting via RTS pin...`), tap **`RST` once** to launch the firmware.
 
-### Problem: COM Port Does Not Appear or Disappears
+### 🔸 Problem: COM Port Does Not Appear in Arduino IDE
 * **Causes & Fixes:**
-  * **Charge-only USB cable:** Many cheap USB cables lack the D+/D- data lines. Swap to a known good data sync cable.
-  * **Loose USB-C connector:** Plug directly into your computer's motherboard port, avoiding unpowered USB hubs.
-  * **Driver / Native USB Enumeration:** Hold `BOOT`, plug in the USB-C cable, then release `BOOT`. Windows will detect the chip as `USB JTAG/serial debug unit (COMxx)`.
+  * 🔴 **Charge-only USB cable:** Swap to a verified USB-C **data sync cable**.
+  * 🟡 **Dual USB-C ports on DevKit:** Most ESP32-S3 boards have two ports—one labeled **`USB`** (Native USB) and one labeled **`UART`** (CH343/CP2102). Plug into **`USB`** when using `USB CDC On Boot: Enabled`.
 
 ---
 
-## 2. Serial Monitor Issues (Blank Screen / No Output)
+## 🖥️ 2. Serial Monitor Issues (Blank Screen / No Output)
 
-### Problem: Serial Monitor is Completely Blank (Nothing Prints)
-* **Symptom:** Sketch uploads with 100% success, baud rate is set to `115200`, but Serial Monitor displays zero characters.
-* **CRITICAL CAUSE:** On ESP32-S3 DevKit boards, `Serial` output goes over the native USB CDC peripheral. If **USB CDC On Boot** is disabled, the logs are redirected to pins GPIO 43/44 instead of the USB-C port!
-* **Fix:**
-  1. In Arduino IDE, go to menu: **Tools → USB CDC On Boot**.
-  2. Select **`Enabled`**.
-  3. Re-upload the sketch to the board.
-  4. After upload finishes, click the **`RST` button once**. Output will start streaming immediately.
+> [!CAUTION]
+> **THE #1 REASON FOR A BLANK SERIAL MONITOR ON ESP32-S3:**
+> By default, Arduino IDE sets **USB CDC On Boot** to `Disabled`. When disabled, all `Serial.println()` output is sent to hardware pins `GPIO 43/44` instead of your USB-C cable!
 
-### Problem: Port Busy or "Access Denied" Error in Arduino IDE
-* **Fix:**
-  1. Close the Serial Monitor window (or Serial Plotter) in Arduino IDE.
-  2. Close any other terminal programs (PuTTY, Cura, Python scripts) using that COM port.
-  3. Click **Upload** again.
+### 🔸 Problem: Serial Monitor is 100% Blank at 115200 Baud
+* **Instant Fix:**
+  1. In Arduino IDE, open the top menu: **Tools → USB CDC On Boot**.
+  2. Change it to 🟢 **`Enabled`**.
+  3. Click **Upload** to re-flash the board.
+  4. Open Serial Monitor (`115200 baud`) and press **`RST` once** on the ESP32-S3.
 
----
-
-## 3. Motor & TB6612FNG Driver Issues
-
-### Problem: Motors are Stiff / Hard to Turn by Hand when Powered On
-* **Symptom:** Wheels won't turn under control, but when you try to rotate them with your fingers, they resist strongly and feel "locked" or heavy.
-* **Root Cause: TB6612 Active Short-Brake Mode.**
-  * In the TB6612 truth table:
-    * `IN1 != IN2` and `PWM = LOW (0V)` $\rightarrow$ **Short Brake** (terminals shorted to GND).
-    * `IN1 = HIGH` and `IN2 = HIGH` $\rightarrow$ **Short Brake**.
-    * `IN1 = LOW` and `IN2 = LOW` $\rightarrow$ **Neutral High-Z Coast** (free rotation).
-  * If the ESP32-S3 outputs direction signals while PWM is 0V, or if motor pins were left in brake mode, the driver dynamically brakes the motors!
-* **Fix:**
-  1. Our direct-drive firmware sets `stopMotors()` to write all 18 pins (PWM and DIR) to `LOW`. This forces **High-Z neutral coast**, allowing wheels to spin freely when idle.
-  2. Upload the latest `sketch_nov1a.ino` / `RubbleRover_S3_MotorController.ino`.
-  3. Test without driving: wheels must turn smoothly by hand with power ON.
-
-### Problem: Motors Turn Freely by Hand, but Don't Move when Commanded
-* **Check 1 — TB6612 `STBY` Pin:**
-  * The TB6612 has an active-high `STBY` (Standby) pin. If `STBY` is floating or 0V, **all outputs are disabled**.
-  * Ensure the `STBY` pin on all 3 motor driver boards is wired to **3.3V**.
-* **Check 2 — Motor Battery (VM rail):**
-  * TB6612 `VCC` powers the logic (3.3V from ESP32).
-  * TB6612 `VM` powers the motors (6V–12V from battery pack).
-  * If the battery switch is off, fuse is blown, or battery voltage drops below 5V, logic runs but motors have no power.
-* **Check 3 — Common Ground:**
-  * The motor battery negative (-) terminal **MUST be connected to the ESP32-S3 GND**. Without a common ground reference, the logic signals cannot trigger the driver FETs.
-
-### Problem: One Motor / Side Runs in Reverse
-* **Fix:**
-  * TB6612 Channel A (Left wheels) is physically wired in reverse orientation relative to Channel B (Right wheels) on 6WD chassis.
-  * Our firmware automatically defaults `polarityA = -1` (inverted) and `polarityB = 1` (normal).
-  * You can also toggle the **`MOT A: REV`** or **`MOT B: NORM`** buttons on the WebApp HUD to flip polarity on the fly without touching any wires!
-
-### Built-in 6-Second Motor Diagnostic Tool
-You can test each motor individually to isolate wiring or driver issues:
-1. Connect your phone or PC to `RubbleRover-Tactical-AP`.
-2. In your browser, open:
-   ```
-   http://192.168.4.1/test_motors
-   ```
-3. The rover will pulse each wheel for 1 second in sequence:
-   * **Second 1:** Front-Left (FL)
-   * **Second 2:** Front-Right (FR)
-   * **Second 3:** Mid-Left (ML)
-   * **Second 4:** Mid-Right (MR)
-   * **Second 5:** Rear-Left (RL)
-   * **Second 6:** Rear-Right (RR)
-4. Check Serial Monitor for real-time diagnostic output:
-   ```
-   [DIAGNOSTIC] === RUNNING HARDWARE MOTOR TEST ===
-   [DIAGNOSTIC] Step 1/6: Front-Left (FL) Pulse...
-   [DIAGNOSTIC] Step 2/6: Front-Right (FR) Pulse...
-   ...
-   [DIAGNOSTIC] === ALL MOTORS TEST COMPLETE ===
-   ```
+### 🔸 Problem: Port Busy or `Access Denied` Error During Upload
+* **Fix:** Close the Serial Monitor tab (and any external terminal apps like PuTTY or Python scripts) before clicking **Upload**.
 
 ---
 
-## 4. Wi-Fi & Web Application Issues
+## 🛞 3. Motor & TB6612FNG Driver Issues
 
-### Problem: Wi-Fi Network `RubbleRover-Tactical-AP` Does Not Show Up
-* **Fix:**
-  1. Wait 5–10 seconds after powering on the ESP32-S3 for the Wi-Fi softAP beacon to start.
-  2. Ensure power supply delivers at least 500 mA (ESP32 Wi-Fi RF surges can cause brownouts).
-  3. Press `RST` once to restart the softAP.
+### 🔸 Problem: Motors are Stiff / Hard to Turn by Hand When Powered On
+* **Symptom:** Wheels do not spin, and when you try to rotate them by hand, they resist strongly and feel "locked".
+* **Root Cause — TB6612 Active Short-Brake Mode:**
+  * In the TB6612FNG truth table, if `IN1 != IN2` while `PWM = LOW (0V)` (or if `IN1 = HIGH` and `IN2 = HIGH`), the H-bridge **shorts the motor coils together**, acting as a magnetic brake!
+  * Only `IN1 = LOW, IN2 = LOW, PWM = LOW` places the driver in **High-Z Neutral Coast** mode.
+* **Instant Fix:**
+  1. Upload our direct-drive firmware: `stopMotors()` drives all 18 motor pins `LOW` (High-Z Coast), and driving uses pure `digitalWrite(HIGH)` full gate drive.
+  2. With power ON and rover idle, verify all 6 wheels spin freely by hand.
 
-### Problem: Connected to Wi-Fi, but `192.168.4.1` Says "Site Can't Be Reached"
-* **Most Common Smartphone Issue: Cellular Data Bypass!**
-  * iOS and Android detect that the `RubbleRover-Tactical-AP` has no internet access, and automatically route your browser requests through 4G/5G mobile data instead!
-* **Fix:**
-  1. **Turn OFF Cellular / Mobile Data** on your phone.
-  2. When prompted: *"This Wi-Fi network has no internet connection. Stay connected?"* → Tap **YES / Stay Connected**.
-  3. Open your browser and type: `http://192.168.4.1` (ensure it is `http://`, **NOT** `https://`).
+### 🔸 Problem: Motors Spin Freely by Hand, But Never Move When Commanded
+* **Check 1 — `STBY` (Standby) Pin:** All 3 TB6612FNG `STBY` pins **must be wired to `3.3V`**. If floating or `0V`, all drivers remain shut down.
+* **Check 2 — `VM` Motor Battery Rail:** Logic runs on `VCC` (`3.3V`), while motors run on `VM` ($6\text{V}–12\text{V}$ battery). Verify the battery switch is ON and charged.
+* **Check 3 — Common Ground:** Battery negative (`-`) **must connect to ESP32-S3 `GND`**.
 
----
+### 🔸 Problem: Left Side (`Motor A`) Spins Backwards
+* **Instant Fix:**
+  * Our firmware defaults `polarityA = -1` (physically inverted out of the box).
+  * You can also tap **`MOT A: REV`** or **`MOT B: NORM`** directly on the GameBoy WebApp HUD to flip either side instantly!
 
-## 5. ESP32-CAM Video Satellite Issues
-
-### Problem: WebApp Shows "CAM OFFLINE" / Video Frame is Black
-* **Check 1 — Remove Programming Jumper:**
-  * When flashing the ESP32-CAM, `GPIO 0` is bridged to `GND`.
-  * **You MUST remove this jumper wire before powering on the camera**, or it will stay in bootloader mode and never run!
-* **Check 2 — Power Supply Brownouts:**
-  * The ESP32-CAM draws up to 350 mA peak during Wi-Fi transmission.
-  * Power the ESP32-CAM from a solid **5V pin** (do NOT power from a weak 3.3V rail).
-* **Check 3 — Boot Sequence:**
-  * Power on the **ESP32-S3 Master first** so the Wi-Fi AP is active.
-  * Once the AP is active, press **`RST` on the ESP32-CAM**. It will connect to the AP within 300 ms and auto-register at `192.168.4.2`.
-* **Direct Camera Test:**
-  * In your browser, open `http://192.168.4.2/stream` to view the raw camera feed directly.
+### 🧪 Built-In 6-Second Individual Wheel Diagnostic (`/test_motors`)
+Open **`http://192.168.4.1/test_motors`** in your browser. The rover will pulse each wheel for 1 second in order:
+`FL (1s)` $\rightarrow$ `FR (1s)` $\rightarrow$ `ML (1s)` $\rightarrow$ `MR (1s)` $\rightarrow$ `RL (1s)` $\rightarrow$ `RR (1s)` while printing progress to the Serial Monitor.
 
 ---
 
-## 6. Sensor Issues (MLX90640 & INMP441)
+## 📶 4. Wi-Fi & Web Application Issues
 
-### Problem: Thermal Heatmap Shows "OFFLINE" or Static/Frozen
-* **Check 1 — I2C Pull-Up Resistors:**
-  * The MLX90640 Far-Infrared sensor communicates over I2C at 400 kHz on `SDA (GPIO 2)` and `SCL (GPIO 1)`.
-  * If wires are longer than 10 cm, add $2.2\text{k}\Omega - 4.7\text{k}\Omega$ external pull-up resistors from SDA to 3.3V and SCL to 3.3V.
-* **Check 2 — Power Voltage:**
-  * Power the MLX90640 strictly from **3.3V** (5V can damage the sensor).
-* **Check 3 — Wire Order:**
-  * Verify that SDA (GPIO 2) and SCL (GPIO 1) are not swapped.
+> [!IMPORTANT]
+> **Smartphone Cellular Data Bypass:** When your phone connects to `RubbleRover-Tactical-AP`, it detects *"No Internet"* and silently routes browser traffic over **4G/5G Mobile Data**, causing `http://192.168.4.1` to time out!
 
-### Problem: INMP441 Microphone Shows 0% Sound Level / No Audio
-* **Check 1 — L/R Pin Grounding:**
-  * The `L/R` (Channel Select) pin on the INMP441 **MUST be tied directly to GND** to select the Left audio channel. Leaving it floating causes silent/undefined audio output.
-* **Check 2 — Pin Mappings:**
-  * `SCK (Bit Clock)` → **GPIO 42**
-  * `WS (Word Select / LRCK)` → **GPIO 41**
-  * `SD (Serial Data Out)` → **GPIO 40**
-  * `VDD` → **3.3V** (do NOT connect to 5V).
+### 🔸 Problem: Connected to Wi-Fi, But `http://192.168.4.1` Says "Site Can't Be Reached"
+* **Instant Fix:**
+  1. **Turn OFF Mobile / Cellular Data** on your phone.
+  2. If prompted *"This network has no internet, stay connected?"*, tap **YES / Keep Connection**.
+  3. Type **`http://192.168.4.1`** explicitly (use `http://`, **not** `https://`).
 
 ---
 
-## 7. Power Resets & Brownouts (Robot Reboots When Moving)
+## 📷 5. ESP32-CAM Video Satellite Issues
 
-### Problem: ESP32-S3 Reboots the Moment You Press Forward
-* **Root Cause: Motor Inrush Current Voltage Dip.**
-  * When 6 DC motors start turning simultaneously from a dead stop, they draw a temporary current spike of 2A to 4A.
-  * If the ESP32-S3 shares the same battery line without adequate filtering, the voltage briefly sags below 2.7V, triggering the ESP32 hardware Brownout Detector.
-* **Fixes:**
-  1. **Add Bulk Capacitance:** Solder a $470\mu\text{F} - 1000\mu\text{F}$ electrolytic capacitor directly across the battery `VM` input pins of the motor drivers.
-  2. **Add Logic Decoupling:** Place a $100\mu\text{F}$ capacitor across the ESP32 5V and GND pins.
-  3. **Use a Dedicated Step-Down Converter:** Use an external 5V buck converter (e.g. LM2596 or Mini-360) to provide a regulated 5.0V supply to the ESP32-S3, rather than running it directly off fluctuating battery leads.
+### 🔸 Problem: WebApp Shows `CAM OFFLINE` or Black Video Screen
+* **Check 1 — Remove Flashing Jumper:** You **MUST remove the `GPIO 0` to `GND` jumper wire** after uploading to the ESP32-CAM, then press `RST`.
+* **Check 2 — Power Supply (`5V` Rail):** Power the ESP32-CAM from a solid **5V supply** ($\ge 500\text{mA}$), not a weak 3.3V pin.
+* **Check 3 — Edition 1 vs Edition 2 IP:**
+  * **Edition 1:** Camera connects to S3 AP at **`http://192.168.4.2/stream`**.
+  * **Edition 2 (`v2`):** Camera broadcasts its own AP (`RubbleRover-CAM-AP`) at **`http://192.168.5.1`** AND joins your Wi-Fi Router. Click `CAM IP: ... (SET)` on the S3 HUD to enter the camera's IP.
 
 ---
 
-## 8. Summary Table: Issue vs Instant Action
+## 🌡️ 6. Sensor Issues (MLX90640 & INMP441)
+
+| Sensor | Symptom | Root Cause & Instant Fix |
+| :--- | :--- | :--- |
+| 🔥 **MLX90640 Thermal** | Heatmap shows `OFFLINE` | Check `SCL = GPIO 1`, `SDA = GPIO 2`, power from **3.3V only**, and add $4.7\text{k}\Omega$ pull-up resistors to 3.3V. |
+| 🎙️ **INMP441 Microphone** | VU Meter stuck at `0%` | Tie the **`L/R` pin directly to `GND`**. Check `SCK = 42`, `WS = 41`, `SD = 40`, and power from **3.3V only**. |
+
+---
+
+## 🔋 7. Power Resets & Brownouts (Robot Reboots When Moving)
+
+### 🔸 Problem: ESP32-S3 Reboots the Instant You Press Forward
+* **Root Cause:** 6 DC gearmotors draw a $2\text{A}–4\text{A}$ startup inrush spike. If the ESP32 shares an unfiltered battery line, voltage dips below $2.8\text{V}$ and trips the hardware Brownout Detector.
+* **Instant Fixes:**
+  1. Solder a **$1000\,\mu\text{F}$ ($16\text{V}+$) electrolytic capacitor** across `VM` and `GND` on the motor driver power rail.
+  2. Power the ESP32-S3 via a dedicated **5V buck converter** (LM2596 / Mini-360) rather than raw battery leads.
+
+---
+
+## 📊 8. Master Summary Matrix: Symptom vs Instant Action
 
 | Symptom | Primary Cause | Instant Action |
-|---|---|---|
-| **Stuck in download mode** | `BOOT` button or GPIO 0 held LOW | Unplug, release button, replug, click `RST` once |
-| **Serial monitor blank** | USB CDC On Boot is Disabled | Set `Tools → USB CDC On Boot → Enabled` and re-flash |
-| **Motors stiff / hard to turn** | TB6612 Short Brake active | Flash latest direct-drive firmware; all pins LOW when stopped |
-| **Motors won't spin at all** | `STBY` pin floating or VM battery off | Wire `STBY` to 3.3V; check battery switch & common GND |
-| **One side drives reverse** | Motor wiring inverted | Click `MOT A: REV` button on HUD or set `polarityA = -1` |
-| **Phone can't open 192.168.4.1** | Cellular data bypass | Turn OFF Mobile Data on phone; click "Stay Connected" |
-| **Camera feed offline** | GPIO 0 jumper left on CAM board | Remove GPIO 0 jumper; press `RST` on ESP32-CAM |
-| **Thermal sensor offline** | Missing I2C pull-ups or swapped pins | Check SDA=GPIO 2, SCL=GPIO 1; add 4.7k pull-ups |
-| **Rover reboots on forward** | Voltage dip from motor inrush | Add 1000µF capacitor across motor battery rail |
----
-
-## 9. Serial Monitor Error Message Decoder ("What If I See This?")
-
-Use this visual guide when you see specific error strings or status messages in the Arduino IDE Serial Monitor (115200 baud).
+| :--- | :--- | :--- |
+| 🔴 **Stuck in download mode** | `BOOT` button or `GPIO 0` held LOW | Unplug USB, release button, replug, tap `RST` once |
+| 🔴 **Serial monitor blank** | `USB CDC On Boot` is Disabled | Set **Tools → USB CDC On Boot → `Enabled`** & re-flash |
+| 🟡 **Motors stiff / locked** | TB6612 in Short-Brake mode | Flash direct-drive firmware (`stopMotors()` sets all pins `LOW`) |
+| 🟡 **Motors won't spin at all** | `STBY` floating or `VM` battery off | Tie `STBY` to `3.3V`; turn battery switch ON; tie common `GND` |
+| 🟣 **Left wheels spin reverse** | Physical motor polarity | Tap **`MOT A: REV`** on HUD (default `polarityA = -1`) |
+| 🔵 **Phone can't open `192.168.4.1`** | Phone cellular data bypass | Turn **OFF Mobile Data** on phone; tap *"Stay Connected"* |
+| 🟠 **Camera stream offline** | `GPIO 0` jumper still attached | Remove `GPIO 0` jumper on ESP32-CAM and press `RST` |
+| 🟢 **Thermal sensor offline** | Missing I2C pull-ups or wire swap | Verify `SCL=1, SDA=2`; firmware auto-detects hot-plug & swap |
+| ⚡ **Rover reboots on drive** | Motor inrush voltage sag | Add $1000\,\mu\text{F}$ capacitor across `VM` battery rail |
 
 ---
 
-### 1. `waiting for download` or `boot:0x0 (DOWNLOAD...)`
-* **What you see:**
-  ```text
-  ESP-ROM:esp32s3-20210327
-  Build:Mar 27 2021
-  rst:0x1 (POWERON),boot:0x0 (DOWNLOAD(USB/UART0/1/...))
-  waiting for download
-  ```
-* **Meaning:** The ESP32-S3 is stuck in ROM Bootloader mode. It is waiting for new firmware over USB, so your rover program will never start.
-* **Why it happens:** Physical `BOOT` button is held down or stuck, or `GPIO 0` is wired to GND.
-* **Instant Fix:**
-  1. Unplug the USB-C cable.
-  2. Inspect the physical `BOOT` button on the board to ensure it clicks freely.
-  3. Ensure no jumper wire is connected to GPIO 0.
-  4. Plug USB-C back in and press the **`RST` (EN) button ONCE** (do NOT hold `BOOT`).
+## 🔍 9. Serial Monitor Error Message Decoder ("What If I See This?")
+
+> [!NOTE]
+> Match any message printed in your Arduino IDE Serial Monitor (**`115200 baud`**) to the 21 diagnostic cases below for an exact explanation and fix.
 
 ---
 
-### 2. `Brownout detector was triggered` or `rst:0xc (RTCWDT_RTC_RST)`
-* **What you see:**
-  ```text
-  Brownout detector was triggered
-  rst:0xc (RTCWDT_RTC_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)
-  ```
-* **Meaning:** The ESP32-S3 hardware brownout detector tripped because logic voltage dropped below 2.8V, forcing a protective emergency reboot.
-* **Why it happens:** This almost always happens the split-second the motors start turning forward, caused by motor inrush current pulling down the shared battery rail.
-* **Instant Fix:**
-  1. **Never power motors from the ESP32's 3.3V or 5V pins!** Logic `VCC` goes to ESP32 3.3V, but motor `VM` must connect directly to the battery pack.
-  2. Solder a **1000 µF (16V+) electrolytic capacitor** directly across the TB6612 `VM` and `GND` pins.
-  3. Power the ESP32-S3 through a dedicated 5.0V step-down buck converter (e.g. Mini-360) rather than fluctuating raw battery leads.
+### 🔴 Case 1: `waiting for download` or `boot:0x0 (DOWNLOAD...)`
+```text
+ESP-ROM:esp32s3-20210327
+rst:0x1 (POWERON),boot:0x0 (DOWNLOAD(USB/UART0/1/...))
+waiting for download
+```
+* **Meaning:** The ESP32-S3 is trapped in ROM Bootloader mode waiting for firmware upload, so your sketch is not running.
+* **Instant Fix:** Unplug USB-C, ensure nothing is holding the `BOOT` button or grounding `GPIO 0`, plug back in, and tap **`RST` once**.
 
 ---
 
-### 3. `Guru Meditation Error: Core 0 panic'ed (LoadProhibited)`
-* **What you see:**
-  ```text
-  Guru Meditation Error: Core 0 panic'ed (LoadProhibited). Exception was unhandled.
-  Core 0 register dump:
-  PC      : 0x42001a2b  PS      : 0x00060030  ...
-  ELF file SHA256: ...
-  Rebooting...
-  ```
-* **Meaning:** A fatal software exception (null pointer or illegal memory access) occurred on Core 0 (the sensor polling task).
-* **Why it happens:**
-  1. An I2C library attempted to read EEPROM registers from a missing sensor with no timeout, causing bus corruption.
-  2. `Serial.println()` was called before `Serial.begin()` initialized the USB CDC hardware ring buffer.
-* **Instant Fix:**
-  1. The latest firmware fixes both: `Serial.begin(115200)` is line 1 of `setup()`, and `Wire.setTimeOut(50)` prevents I2C bus hangs.
-  2. Re-upload the latest `sketch_nov1a.ino` / `RubbleRover_S3_MotorController.ino`.
+### 🔴 Case 2: `Brownout detector was triggered` or `rst:0xc (RTCWDT_RTC_RST)`
+```text
+Brownout detector was triggered
+rst:0xc (RTCWDT_RTC_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)
+```
+* **Meaning:** Logic voltage dipped below $2.8\text{V}$ (typically when motors start moving), forcing a hardware reset.
+* **Instant Fix:** Power motors strictly from the battery `VM` rail (never from ESP32 `3.3V`/`5V` pins), add a **$1000\,\mu\text{F}$ capacitor** across `VM` & `GND`, and use a separate 5V buck converter for the ESP32.
 
 ---
 
-### 4. Gibberish, Question Marks, or Garbage Characters (`⸮⸮▒▒$x@!`)
-* **What you see:**
-  ```text
-  ⸮⸮▒▒$x@!
-  ```
-* **Meaning:** The baud rate of your Serial Monitor does not match the baud rate of the firmware.
-* **Instant Fix:**
-  1. In the bottom-right corner of the Arduino IDE Serial Monitor window, change the baud rate dropdown to **`115200 baud`**.
-  2. Press the **`RST`** button once on the ESP32-S3. Clean text will appear immediately.
-  3. *(Note: 2–3 random characters appearing at the exact moment of reset is normal hardware crystal switching noise from the ESP32 ROM).*
+### 🔴 Case 3: `Guru Meditation Error: Core 0 panic'ed (LoadProhibited)`
+```text
+Guru Meditation Error: Core 0 panic'ed (LoadProhibited). Exception was unhandled.
+```
+* **Meaning:** Software exception on Core 0 (caused by an unguarded I2C read on a missing sensor or calling `Serial.println` before `Serial.begin`).
+* **Instant Fix:** Flash the latest firmware—`Serial.begin(115200)` now runs first and `Wire.setTimeOut(50)` prevents bus hangs.
 
 ---
 
-### 5. `[I2C] MLX90640 not detected at 0x33 (hot-plug auto-probe active).`
-* **What you see:**
-  ```text
-  [I2C] Initializing I2C for MLX90640...
-  [I2C] MLX90640 not detected at 0x33 (hot-plug auto-probe active).
-  [HEARTBEAT] Clients:0 | MLX:OFFLINE | Mic:ONLINE (Lvl:2%) | IP:192.168.4.1
-  ```
-* **Meaning:** The rover booted successfully and drives normally, but the MLX90640 thermal sensor is not responding on the I2C bus.
-* **Why it happens:**
-  1. MLX sensor is unplugged (safe: rover still drives and mic works).
-  2. Wires are loose or connected to wrong pins.
-  3. Missing 4.7kΩ pull-up resistors on SDA (GPIO 2) and SCL (GPIO 1).
-* **Instant Fix:**
-  1. Verify wiring: MLX `SDA` → **GPIO 2**, MLX `SCL` → **GPIO 1**, MLX `VIN` → **3.3V** (do NOT use 5V).
-  2. Connect SDA and SCL to 3.3V via 4.7kΩ pull-up resistors.
-  3. **Hot-Plug Feature:** You don't even need to restart! Once properly connected, the rover will automatically detect it and print:
-     ```text
-     [MLX90640] Sensor hot-plug detected and initialized!
-     ```
+### 🟡 Case 4: Gibberish, Question Marks, or Garbage Characters (`⸮⸮▒▒$x@!`)
+```text
+⸮⸮▒▒$x@!
+```
+* **Meaning:** Serial Monitor baud rate mismatch.
+* **Instant Fix:** Set the baud rate dropdown in the bottom-right corner of Serial Monitor to **`115200 baud`** and tap `RST`.
 
 ---
 
-### 6. `[I2C] MLX90640 detected on swapped pins (SDA:2, SCL:1)!`
-* **What you see:**
-  ```text
-  [I2C] Initializing I2C for MLX90640...
-  [I2C] MLX90640 detected on swapped pins (SDA:2, SCL:1)!
-  [MLX90640] MLX90640 Initialized Successfully!
-  ```
-* **Meaning:** The rover detected that your SDA and SCL wires were physically reversed, and **automatically re-routed them in software**!
-* **Action:** No action needed! The thermal camera is 100% operational.
+### 🟡 Case 5: `[I2C] MLX90640 not detected at 0x33 (hot-plug auto-probe active).`
+```text
+[I2C] Initializing I2C for MLX90640...
+[I2C] MLX90640 not detected at 0x33 (hot-plug auto-probe active).
+[HEARTBEAT] Clients:0 | MLX:OFFLINE | Mic:ONLINE (Lvl:2%) | IP:192.168.4.1
+```
+* **Meaning:** Rover booted and drives normally, but MLX90640 did not acknowledge `0x33`.
+* **Instant Fix:** Check `SDA = GPIO 2`, `SCL = GPIO 1`, `VIN = 3.3V`, and $4.7\text{k}\Omega$ pull-ups. Once plugged in, the background task will auto-initialize it without a reboot!
 
 ---
 
-### 7. `[AUDIO] WARNING: ESP_I2S init failed.`
-* **What you see:**
-  ```text
-  [AUDIO] WARNING: ESP_I2S init failed.
-  ```
-* **Meaning:** The ESP32 hardware I2S peripheral failed to bind to the microphone audio pins.
-* **Why it happens:** GPIO 42, 41, or 40 has a solder bridge or is shorted to GND.
-* **Instant Fix:**
-  1. Check Header J3 pins: `SCK` (GPIO 42), `WS` (GPIO 41), and `SD` (GPIO 40).
-  2. Ensure INMP441 `VDD` is connected to 3.3V.
+### 🟢 Case 6: `[I2C] MLX90640 detected on swapped pins (SDA:2, SCL:1)!`
+```text
+[I2C] MLX90640 detected on swapped pins (SDA:2, SCL:1)!
+[MLX90640] MLX90640 Initialized Successfully!
+```
+* **Meaning:** Your physical SDA and SCL wires were reversed, and the firmware **automatically swapped them in software**!
+* **Instant Fix:** **No action needed!** Your thermal camera is 100% online.
 
 ---
 
-### 8. `[HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:0%)` (Mic Always 0%)
-* **What you see:**
-  ```text
-  [HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:0%) | IP:192.168.4.1
-  [HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:0%) | IP:192.168.4.1
-  ```
-* **Meaning:** The microphone initialized, but audio loudness is permanently locked at 0%, even when you speak loudly or clap.
-* **Why it happens:** The INMP441 `L/R` (Channel Select) pin is floating or wired to 3.3V. In mono mode, the ESP32 reads the Left channel. When `L/R` is not grounded, the microphone outputs on the Right channel, leaving the Left channel as digital silence!
-* **Instant Fix:**
-  1. Solder the INMP441 **`L/R` pin directly to `GND`**.
-  2. Clap your hands near the mic — the Serial Monitor will immediately show `(Lvl:40%)` to `(Lvl:85%)`.
+### 🟡 Case 7: `[AUDIO] WARNING: ESP_I2S init failed.`
+```text
+[AUDIO] WARNING: ESP_I2S init failed.
+```
+* **Meaning:** The ESP32 I2S peripheral failed to bind to `GPIO 42, 41, 40`.
+* **Instant Fix:** Inspect Header J3 pins (`42, 41, 40`) for solder bridges or shorts to `GND`, and ensure INMP441 `VDD` is wired to `3.3V`.
 
 ---
 
-### 9. `[WATCHDOG] Failsafe timeout! Stopping motors.`
-* **What you see:**
-  ```text
-  [WATCHDOG] Failsafe timeout! Stopping motors.
-  ```
-* **Meaning:** Tactical safety feature active. The rover automatically stopped all 6 motors because no control packet was received for >1000 ms.
-* **Why it happens:**
-  1. The operator released the D-pad (normal).
-  2. The phone went to sleep or the browser tab was switched.
-  3. Wi-Fi signal was briefly interrupted.
-* **Action:** Completely normal expected behavior. As soon as you press any D-pad arrow again, driving instantly resumes.
+### 🟡 Case 8: `[HEARTBEAT] ... Mic:ONLINE (Lvl:0%)` *(Loudness Stuck at 0%)*
+```text
+[HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:0%) | IP:192.168.4.1
+```
+* **Meaning:** Mic is initialized, but outputs digital silence because the `L/R` channel pin is floating.
+* **Instant Fix:** Solder the INMP441 **`L/R` pin directly to `GND`** (selects Left channel). Clap near the mic to see `Lvl:40%–85%`.
 
 ---
 
-### 10. ESP32-CAM: `[FATAL] Camera initialization failed!`
-* **What you see:**
-  ```text
-  ====================================================================
-    RUBBLEROVER: ESP32-CAM HIGH-SPEED VIDEO SATELLITE
-  ====================================================================
-  [FATAL] Camera initialization failed!
-  ```
-* **Meaning:** The ESP32-CAM cannot communicate with the OV2640 camera sensor over the SCCB bus.
-* **Why it happens:**
-  1. The gold ribbon cable of the camera lens is crooked or loose in its connector socket.
-  2. Wrong board selected in Arduino IDE.
-* **Instant Fix:**
-  1. Disconnect power.
-  2. Flip up the small black retaining flap on the camera connector socket.
-  3. Slide the ribbon cable out, reseat it squarely and deeply, then press the black flap down firmly.
-  4. Ensure Arduino IDE board is set to **`AI Thinker ESP32-CAM`**.
+### 🟢 Case 9: `[WATCHDOG] Failsafe timeout! Stopping motors.`
+```text
+[WATCHDOG] Failsafe timeout! Stopping motors.
+```
+* **Meaning:** Safety watchdog stopped all 6 motors because no drive packet arrived for $>1000\text{ms}$ (e.g., you released the D-pad or closed the browser).
+* **Instant Fix:** **Normal safety behavior!** Tap any D-pad button to resume driving immediately.
 
 ---
 
-### 11. ESP32-CAM: `[WIFI-STA] Connecting immediately to Master AP... ............`
-* **What you see:**
-  ```text
-  [WIFI-STA] Connecting immediately to Master AP: RubbleRover-Tactical-AP (Ch 1)...
-  ................................
-  [WIFI-STA] S3 not yet online; running background reconnect in loop().
-  ```
-* **Meaning:** The camera satellite is broadcasting search probes but cannot find the ESP32-S3's Wi-Fi network.
-* **Why it happens:**
-  1. The ESP32-S3 Master has not been powered ON yet, or its softAP crashed.
-* **Instant Fix:**
-  1. **Always power on the ESP32-S3 Master FIRST.**
-  2. Check the S3's Serial Monitor to confirm `[WIFI-AP] Online!` has printed.
-  3. Once the S3 is broadcasting, press the **`RST` button on the ESP32-CAM**. It will connect in under 300 ms and print:
-     ```text
-     [WIFI-STA] CONNECTED in 240ms! Node IP: 192.168.4.2
-     [HANDSHAKE] Registered 192.168.4.2 with ESP32-S3 Master!
-     ```
----
-
-### 12. `wifi: Station disconnected from AP, reason=202` (or `reason=15`)
-* **What you see:**
-  ```text
-  wifi: Station connected to AP, AID=1
-  wifi: Station disconnected from AP, reason=202
-  ```
-* **Meaning:** A client device (smartphone, tablet, or ESP32-CAM) attempted to connect to `RubbleRover-Tactical-AP`, but was immediately kicked off or failed the 4-way WPA2 handshake.
-* **Why it happens:**
-  1. `reason=202` indicates an **incorrect Wi-Fi password** (`AUTH_FAIL`).
-  2. `reason=15` indicates a 4-way handshake timeout (often caused by "Randomized Private MAC" on iOS/Android).
-* **Instant Fix:**
-  1. Verify the password: **`RubbleRover2026`** (case-sensitive).
-  2. On your phone: Open Wi-Fi settings for `RubbleRover-Tactical-AP` → Change **"MAC Address Type"** from *Randomized MAC* to ***Phone / Device MAC***.
-  3. Bring the device closer to the rover's antenna.
+### 🔴 Case 10: ESP32-CAM: `[FATAL] Camera initialization failed!`
+```text
+[FATAL] Camera initialization failed!
+```
+* **Meaning:** ESP32-CAM could not initialize the OV2640 camera module.
+* **Instant Fix:** Power off, lift the black retaining flap on the camera ribbon connector, reseat the gold ribbon cable squarely, lock the flap down, and verify board is set to **`AI Thinker ESP32-CAM`**.
 
 ---
 
-### 13. `CORRUPT HEAP: multi_heap.c:xxx ... abort() was called`
-* **What you see:**
-  ```text
-  CORRUPT HEAP: multi_heap.c:431 detected at 0x3fc94a20
-  abort() was called at PC 0x40378bc5 on core 0
-  Backtrace: 0x40375a11 0x40378bc5 0x42004210 ...
-  ```
-* **Meaning:** Fatal heap memory corruption (buffer overflow). A FreeRTOS task or interrupt handler wrote data beyond the bounds of an allocated array.
-* **Why it happens:** Usually happens if dynamic memory allocation (`String`, `malloc`, `new`) is called inside high-frequency sensor loops (Core 0).
-* **Instant Fix:**
-  1. Our direct-drive firmware uses 100% **static pre-allocated buffers** (`float thermalPixels[768]`, `int16_t audioSliceBuffer[2048]`), eliminating heap fragmentation.
-  2. Flash the latest firmware version from `sketch_nov1a.ino` / `RubbleRover_S3_MotorController.ino`.
+### 🟡 Case 11: ESP32-CAM: `[WIFI-STA] Connecting immediately to Master AP... ............`
+```text
+[WIFI-STA] Connecting immediately to Master AP: RubbleRover-Tactical-AP (Ch 1)...
+................................
+[WIFI-STA] S3 not yet online; running background reconnect in loop().
+```
+* **Meaning:** The camera cannot find the ESP32-S3's Wi-Fi network.
+* **Instant Fix:** Power on the **ESP32-S3 Master first** (or use **Edition 2 Firmware** where the camera broadcasts its own independent `RubbleRover-CAM-AP` at `192.168.5.1`).
 
 ---
 
-### 14. `task_wdt: Task watchdog got triggered... IDLE0 (CPU 0)`
-* **What you see:**
-  ```text
-  E (10432) task_wdt: Task watchdog got triggered. The following tasks did not feed the watchdog:
-  E (10432) task_wdt:  - IDLE0 (CPU 0)
-  Tasks currently running:
-  CPU 0: SensorTaskCore0
-  CPU 1: loopTask
-  ```
-* **Meaning:** The FreeRTOS hardware task watchdog reset the chip because CPU 0 was monopolized in a tight infinite loop without yielding to the background IDLE task for >5 seconds.
-* **Why it happens:** The sensor task on Core 0 hung while waiting for I2C clock-stretching or had no delay.
-* **Instant Fix:**
-  1. Our firmware incorporates `Wire.setTimeOut(50)` so I2C reads never hang.
-  2. Ensure `vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(60));` is present at the bottom of `sensorTask` to feed the watchdog every 60 ms.
+### 🟡 Case 12: `wifi: Station disconnected from AP, reason=202` *(or `reason=15`)*
+```text
+wifi: Station connected to AP, AID=1
+wifi: Station disconnected from AP, reason=202
+```
+* **Meaning:** Client device failed WPA2 authentication (`202`) or handshake timeout (`15`).
+* **Instant Fix:** Check password **`RubbleRover2026`** (case-sensitive). On your phone's Wi-Fi settings for the rover AP, change **MAC Address Type** from *Randomized MAC* to ***Phone / Device MAC***.
 
 ---
 
-### 15. `rst:0x3 (RTC_SW_SYS_RST)` or `rebooting...` in a Rapid Loop
-* **What you see:**
-  ```text
-  rst:0x3 (RTC_SW_SYS_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)
-  ...
-  rst:0x3 (RTC_SW_SYS_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)
-  ```
-* **Meaning:** The ESP32 is caught in an infinite bootloop caused by a software crash occurring during `setup()`.
-* **Why it happens:**
-  1. Peripheral initialization collision (e.g. attempting to start Wi-Fi, I2S, or I2C on reserved strapping pins GPIO 0, 3, 45, 46).
-  2. Calling `Serial.print` before `Serial.begin`.
-* **Instant Fix:**
-  1. Enter manual bootloader mode: Hold `BOOT` button → click `RST` → release `BOOT`.
-  2. In Arduino IDE, click **Upload** with the latest vetted firmware.
-  3. Once upload completes, click **`RST` once**.
+### 🔴 Case 13: `CORRUPT HEAP: multi_heap.c:xxx ... abort() was called`
+```text
+CORRUPT HEAP: multi_heap.c:431 detected at 0x3fc94a20
+abort() was called at PC 0x40378bc5 on core 0
+```
+* **Meaning:** Heap memory corruption from dynamic buffer overflow.
+* **Instant Fix:** Flash the latest firmware, which uses 100% static pre-allocated arrays (`thermalPixels[768]`, `audioSliceBuffer[4000]`).
 
 ---
 
-### 16. ESP32-CAM: `E (xxxx) camera: Camera probe failed with error 0x20002`
-* **What you see:**
-  ```text
-  E (1254) camera: Camera probe failed with error 0x20002
-  [FATAL] Camera initialization failed!
-  ```
-* **Meaning:** `0x20002` = `ESP_ERR_NOT_FOUND`. The ESP32-CAM scanned the SCCB/I2C camera bus on GPIO 26 (SDA) and GPIO 27 (SCL), but received no acknowledgment from the OV2640 sensor chip.
-* **Why it happens:**
-  1. The flexible gold ribbon cable of the camera module is unplugged or crooked.
-  2. The `GPIO 0` to `GND` jumper used during flashing was left attached.
-* **Instant Fix:**
-  1. **Remove the GPIO 0 jumper wire!** (GPIO 0 shares circuitry with camera clock lines).
-  2. Carefully open the camera socket latch, reseat the gold ribbon contacts facing downwards, and snap the latch shut.
-  3. Press `RST` on the camera board.
+### 🔴 Case 14: `task_wdt: Task watchdog got triggered... IDLE0 (CPU 0)`
+```text
+E (10432) task_wdt: Task watchdog got triggered. The following tasks did not feed the watchdog:
+E (10432) task_wdt:  - IDLE0 (CPU 0)
+```
+* **Meaning:** Core 0 was stuck waiting on an unguarded I2C bus without yielding to FreeRTOS IDLE task.
+* **Instant Fix:** Latest firmware enforces `Wire.setTimeOut(50)` and `vTaskDelayUntil(..., pdMS_TO_TICKS(60))` on Core 0.
 
 ---
 
-### 17. `[WIFI-AP] Online!` but `[HEARTBEAT] Clients:0` Never Increases
-* **What you see:**
-  ```text
-  [WIFI-AP] Online! SSID: RubbleRover-Tactical-AP | IP: 192.168.4.1
-  [HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:4%) | IP:192.168.4.1
-  [HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:4%) | IP:192.168.4.1
-  ```
-* **Meaning:** The rover SoftAP is active, but your phone/PC has not successfully joined the network (or disconnected immediately).
-* **Why it happens:** Android and iOS smartphones test whether an AP has Internet access. When they detect no Internet, they silently switch back to 4G/5G mobile data and disconnect from the rover!
-* **Instant Fix:**
-  1. **Turn OFF Mobile / Cellular Data** in your smartphone settings.
-  2. Reconnect to `RubbleRover-Tactical-AP`.
-  3. When the prompt pops up: *"No internet access. Stay connected?"* → Select **YES / Keep Connection**.
-  4. The Serial Monitor will immediately print: `[HEARTBEAT] Clients:1`!
+### 🔴 Case 15: `rst:0x3 (RTC_SW_SYS_RST)` *(Rapid Reboot Loop)*
+```text
+rst:0x3 (RTC_SW_SYS_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)
+```
+* **Meaning:** Software reset loop during `setup()`.
+* **Instant Fix:** Hold `BOOT` $\rightarrow$ tap `RST` $\rightarrow$ release `BOOT`, upload the latest sketch with `PSRAM: Disabled`, then tap `RST`.
 
 ---
 
-### 18. `flash read err, 1000` or `ets_main.c 371`
-* **What you see:**
-  ```text
-  flash read err, 1000
-  ets_main.c 371
-  ets Jun  8 2016 00:22:57
-  ```
-* **Meaning:** The ESP32 hardware ROM bootloader failed to read user application code from the SPI flash memory.
-* **Why it happens:** Flash mode mismatch in Arduino IDE (e.g. board uses Quad SPI, but sketch was flashed with Octal SPI, or vice versa).
-* **Instant Fix:**
-  1. In Arduino IDE, open **Tools → Flash Mode**.
-  2. Change it to **`QIO 80MHz`** (or **`DIO 80MHz`** for generic modules).
-  3. In **Tools → PSRAM**, select **`Disabled`** (or `OPI PSRAM` only if your board specifically has Octal PSRAM).
-  4. Re-flash the sketch.
+### 🔴 Case 16: ESP32-CAM: `E (xxxx) camera: Camera probe failed with error 0x20002`
+```text
+E (1254) camera: Camera probe failed with error 0x20002
+```
+* **Meaning:** `0x20002` (`ESP_ERR_NOT_FOUND`) — OV2640 sensor did not respond on SCCB pins (`GPIO 26/27`).
+* **Instant Fix:** **Remove the `GPIO 0` to `GND` flashing jumper wire!** Reseat the camera ribbon cable and press `RST`.
 
 ---
 
-### 19. `[HTTP] 404 Not Found: /generate_204` or `/hotspot-detect.html`
-* **What you see:**
-  ```text
-  [HTTP] 404 Not Found: /generate_204
-  [HTTP] 404 Not Found: /hotspot-detect.html
-  [HTTP] 404 Not Found: /ncsi.txt
-  ```
-* **Meaning:** These are automatic background "Captive Portal Detection" requests sent by Apple iOS, Android, and Windows when they connect to any Wi-Fi AP.
-* **Action:** **Completely harmless!** In fact, this confirms that your phone is communicating with the ESP32-S3 web server on Port 80. Open your browser and navigate directly to `http://192.168.4.1`.
+### 🟡 Case 17: `[WIFI-AP] Online!` But `[HEARTBEAT] Clients:0` Never Increases
+```text
+[HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:4%) | IP:192.168.4.1
+```
+* **Meaning:** Your phone disconnected in the background because the rover AP has no internet.
+* **Instant Fix:** Turn **OFF Cellular Data** on your phone, reconnect to `RubbleRover-Tactical-AP`, and tap **"Keep Connection"**. `Clients:1` will appear immediately.
 
 ---
 
-### 20. `[LIGHT] Searchlight LED state: 1` but Flash LED Remains Dark
-* **What you see:**
-  ```text
-  [LIGHT] Searchlight LED state: 1
-  ```
-  The Serial Monitor confirms the searchlight command was received, but the high-power white LED on the ESP32-CAM board does not light up.
-* **Why it happens:**
-  1. The onboard high-power flash LED on ESP32-CAM draws up to 150 mA. If the 5V power supply cannot supply enough current, the LED driver transistor won't saturate.
-  2. Power supply brownout protection.
-* **Instant Fix:**
-  1. Power the ESP32-CAM from a **5V 2A power source** (do not power it from the 3.3V pin).
-  2. Ensure the camera board GND is connected to the common system ground.
+### 🔴 Case 18: `flash read err, 1000` or `ets_main.c 371`
+```text
+flash read err, 1000
+ets_main.c 371
+```
+* **Meaning:** SPI Flash mode mismatch in Arduino IDE settings.
+* **Instant Fix:** Set **Tools → Flash Mode → `QIO 80MHz`** (or `DIO 80MHz`) and **Tools → PSRAM → `Disabled`**, then re-upload.
 
 ---
 
-### 21. `[DIAG 1/6] Front-Left (Motor A)...` Motor Whines/Buzzes but Wheel Does Not Spin
-* **What you see:**
-  ```text
-  --- STARTING 6-MOTOR HARDWARE DIAGNOSTIC ---
-  [DIAG 1/6] Front-Left (Motor A)...
-  ```
-  You hear a high-pitched motor buzz/whine from the gearbox, but the wheel does not physically turn.
-* **Meaning:** The TB6612 H-bridge driver and ESP32 GPIOs are working 100% correctly, but the motor does not have enough starting breakaway torque to overcome gearbox/chassis friction.
-* **Why it happens:**
-  1. Motor battery voltage has sagged below 6.0V.
-  2. Chassis axle or gearbox is mechanically jammed by rubble, dirt, or over-tightened mounting screws.
-* **Instant Fix:**
-  1. Recharge the motor battery pack ($>7.4\text{V}$ for a 2S LiPo).
-  2. With the rover turned OFF, turn each wheel by hand to verify that all gearboxes spin freely without mechanical binding.
-  3. On the WebApp HUD, click the speed selector button to switch from **Crawl (180)** to **Turbo (255)** for full-voltage breakaway torque.
+### 🟢 Case 19: `[HTTP] 404 Not Found: /generate_204` or `/hotspot-detect.html`
+```text
+[HTTP] 404 Not Found: /generate_204
+[HTTP] 404 Not Found: /hotspot-detect.html
+```
+* **Meaning:** Automatic captive-portal probes from Android/iOS/Windows.
+* **Instant Fix:** **100% harmless!** This proves your phone is talking to the ESP32-S3 web server. Open `http://192.168.4.1` in your browser.
+
+---
+
+### 🟡 Case 20: `[LIGHT] Searchlight LED state: 1` But Flash LED Stays Dark
+```text
+[LIGHT] Searchlight LED state: 1
+```
+* **Meaning:** Command succeeded, but the ESP32-CAM 5V supply cannot provide the $150\text{mA}$ current needed by the `GPIO 4` floodlight LED.
+* **Instant Fix:** Power the ESP32-CAM from a regulated **5V 2A rail** with common `GND`.
+
+---
+
+### 🟡 Case 21: `[DIAG 1/6] Front-Left (Motor A)...` Motor Whines/Buzzes But Doesn't Turn
+```text
+--- STARTING 6-MOTOR HARDWARE DIAGNOSTIC ---
+[DIAG 1/6] Front-Left (Motor A)...
+```
+* **Meaning:** H-bridge is delivering power, but battery voltage is too low or the gearbox is mechanically bound.
+* **Instant Fix:** Charge the motor battery pack ($>7.4\text{V}$), verify wheels turn freely by hand when powered off, and switch the HUD speed gear to **100% TURBO (`255`)**.
+
+---
+
+<div align="center">
+
+[![Return to Top](https://img.shields.io/badge/%E2%AC%86%EF%B8%8F_BACK_TO_TOP-FFD21E?style=for-the-badge&logoColor=black)](#%EF%B8%8F-rubble-rover-troubleshooting--serial-decoder-guide)
+[![Back to Main README](https://img.shields.io/badge/%F0%9F%93%96_BACK_TO_MAIN_README-4ECCA3?style=for-the-badge&logoColor=black)](README.md)
+
+</div>

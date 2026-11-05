@@ -1,152 +1,256 @@
-# Rubble Rover 🚜
+<div align="center">
 
-Autonomous IoT Search & Reconnaissance Rover for Post-Earthquake First Responders.
+# 🚜 RUBBLE ROVER
+### **Autonomous IoT Search, Thermal Reconnaissance & Tactical Communication Rover**
+*Designed for Post-Earthquake Victim Search & First Responder Assistance*
 
-Built with **ESP32-S3** (Master Controller & Sensor Hub) + **ESP32-CAM** (Optical Video Satellite).
+[![ESP32-S3 Master](https://img.shields.io/badge/MCU-ESP32--S3%20Dual--Core-FF6B6B?style=for-the-badge&logo=espressif&logoColor=white)](RubbleRover_S3_MotorController/RubbleRover_S3_MotorController.ino)
+[![ESP32-CAM Video](https://img.shields.io/badge/OPTICAL-ESP32--CAM%20OV2640-4D96FF?style=for-the-badge&logo=espressif&logoColor=white)](RubbleRover_CAM_SurveillanceHub/RubbleRover_CAM_SurveillanceHub.ino)
+[![MLX90640 Thermal](https://img.shields.io/badge/THERMAL-MLX90640%2032x24%20FLIR-FFD21E?style=for-the-badge&logoColor=black)](#2-sensors-header-j3)
+[![INMP441 Audio](https://img.shields.io/badge/AUDIO-INMP441%20I2S%20MEMS-4ECCA3?style=for-the-badge&logoColor=black)](#2-sensors-header-j3)
+[![License MIT](https://img.shields.io/badge/LICENSE-MIT-9B5DE5?style=for-the-badge)](LICENSE)
 
----
-
-## Features
-
-- **6WD Skid-Steer Mobility:** Powered by 3x TB6612FNG dual motor drivers (6 DC gearmotors) with high-torque direct digital drive and High-Z neutral coasting.
-- **Thermal Imaging:** MLX90640 Far-Infrared array (32x24 pixels) with live heatmap and automatic survivor body heat alert ($\ge 33.5^\circ\text{C}$).
-- **Digital Audio Stream:** INMP441 I2S MEMS microphone with real-time loudness VU meter.
-- **Dedicated Video Feed:** ESP32-CAM streams live 640x480 MJPEG video with searchlight control.
-- **Zero Internet Required:** Self-hosted standalone Wi-Fi Access Point (`192.168.4.1`).
-- **Tactical Web Console:** Retro Neo-Brutalist GameBoy interface with multi-touch D-pad and dedicated A/B pivot spin buttons.
+</div>
 
 ---
 
-## System Overview
+## 🗂️ Quick-Access Document & Firmware Hub *(Click Any Box)*
 
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <a href="TROUBLESHOOTING.md">
+        <img src="https://img.shields.io/badge/%F0%9F%9B%A0%EF%B8%8F_TROUBLESHOOTING_GUIDE-OPEN_DOC-FF6B6B?style=for-the-badge" alt="Troubleshooting Guide" />
+      </a>
+      <br />
+      <sub><b>21 Serial Error Decoders, Bootloader Fixes, Motor & Sensor Debugging</b></sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="ESP32_S3_ROVER_PINOUT.csv">
+        <img src="https://img.shields.io/badge/%F0%9F%93%8C_MASTER_PINOUT_CSV-OPEN_TABLE-4ECCA3?style=for-the-badge" alt="Pinout CSV" />
+      </a>
+      <br />
+      <sub><b>Complete 23-GPIO Assignment Spreadsheet (Zero Strapping Conflicts)</b></sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="ESP32_S3_ROVER_PINOUT_PCB_GUIDE.txt">
+        <img src="https://img.shields.io/badge/%F0%9F%93%90_PCB_%26_HARDWARE_GUIDE-OPEN_MANUAL-FFD21E?style=for-the-badge" alt="PCB Guide" />
+      </a>
+      <br />
+      <sub><b>Full Hardware Architecture, Power Isolation & PCB Routing Manual</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <a href="RubbleRover_S3_MotorController/RubbleRover_S3_MotorController.ino">
+        <img src="https://img.shields.io/badge/%E2%9A%A1_S3_FIRMWARE_v1-DIRECT_AP-4D96FF?style=for-the-badge" alt="S3 Firmware v1" />
+      </a>
+      <br />
+      <sub><b>Edition 1: Standalone Tactical AP (<code>192.168.4.1</code>) Master Sketch</b></sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="RubbleRover_CAM_SurveillanceHub/RubbleRover_CAM_SurveillanceHub.ino">
+        <img src="https://img.shields.io/badge/%F0%9F%93%B7_CAM_FIRMWARE_v1-DIRECT_STA-4D96FF?style=for-the-badge" alt="CAM Firmware v1" />
+      </a>
+      <br />
+      <sub><b>Edition 1: Auto-Handshake Video Satellite (<code>192.168.4.2</code>)</b></sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="RubbleRover_WebApp.html">
+        <img src="https://img.shields.io/badge/%F0%9F%8E%AE_WEBAPP_CONSOLE-OPEN_HTML-9B5DE5?style=for-the-badge" alt="WebApp HTML" />
+      </a>
+      <br />
+      <sub><b>Standalone Neo-Brutalist GameBoy Ground Control Station UI</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <a href="Firmware_v2_Router_And_AP/RubbleRover_S3_MotorController_v2/RubbleRover_S3_MotorController_v2.ino">
+        <img src="https://img.shields.io/badge/%F0%9F%8C%90_S3_FIRMWARE_v2-ROUTER_%2B_AP-F15BB5?style=for-the-badge" alt="S3 Firmware v2" />
+      </a>
+      <br />
+      <sub><b>Edition 2: Connects to Wi-Fi Router + Broadcasts Fallback AP</b></sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="Firmware_v2_Router_And_AP/RubbleRover_CAM_SurveillanceHub_v2/RubbleRover_CAM_SurveillanceHub_v2.ino">
+        <img src="https://img.shields.io/badge/%F0%9F%93%A1_CAM_FIRMWARE_v2-ROUTER_%2B_AP-F15BB5?style=for-the-badge" alt="CAM Firmware v2" />
+      </a>
+      <br />
+      <sub><b>Edition 2: Independent Camera Router Connection + Own AP (<code>192.168.5.1</code>)</b></sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="LICENSE">
+        <img src="https://img.shields.io/badge/%F0%9F%93%9C_MIT_LICENSE-VIEW_TERMS-00BBF9?style=for-the-badge" alt="MIT License" />
+      </a>
+      <br />
+      <sub><b>Open-Source MIT Hardware & Software License</b></sub>
+    </td>
+  </tr>
+</table>
+
+---
+
+## 🧭 Quick Section Jump
+
+<div align="center">
+
+[![Features](https://img.shields.io/badge/%E2%9C%A8_Features-FFD21E?style=flat-square&logoColor=black)](#-key-features)
+[![Architecture](https://img.shields.io/badge/%F0%9F%8F%97%EF%B8%8F_Architecture-4ECCA3?style=flat-square&logoColor=black)](#%EF%B8%8F-system-architecture)
+[![Wiring & Pinout](https://img.shields.io/badge/%F0%9F%94%8C_Wiring_%26_Pinout-4D96FF?style=flat-square&logoColor=white)](#-wiring--pinout)
+[![Flashing Setup](https://img.shields.io/badge/%F0%9F%9A%80_Quick_Setup-FF6B6B?style=flat-square&logoColor=white)](#-quick-setup--flashing)
+[![Serial Output](https://img.shields.io/badge/%F0%9F%96%A5%EF%B8%8F_Serial_Monitor_Check-9B5DE5?style=flat-square&logoColor=white)](#%EF%B8%8F-expected-serial-monitor-output-how-to-know-it-works)
+[![Edition 2 Dual WiFi](https://img.shields.io/badge/%F0%9F%8C%90_Firmware_v2_(Router%2BAP)-F15BB5?style=flat-square&logoColor=white)](#-firmware-edition-2-dual-wi-fi-router--ap-mode-firmware_v2_router_and_ap)
+[![Controls](https://img.shields.io/badge/%F0%9F%8E%AE_Controls-00F5D4?style=flat-square&logoColor=black)](#-tactical-controls)
+
+</div>
+
+---
+
+## ✨ Key Features
+
+> [!TIP]
+> **Built for Zero-Infrastructure Disaster Zones:** Rubble Rover operates with **zero external internet or router dependencies** in Edition 1, or seamlessly bridges into an existing **Wi-Fi Router + Fallback AP** in Edition 2.
+
+- 🟢 **6WD High-Torque Skid-Steer Mobility:** Powered by **3x TB6612FNG** dual H-bridge drivers (6 DC gearmotors) with direct digital full-torque drive, default Motor A physical inversion (`polarityA = -1`), and **High-Z Neutral Coasting** (wheels spin freely by hand when idle).
+- 🔴 **Survivor Thermal Imaging:** **MLX90640** Far-Infrared array ($32 \times 24$ pixels) with live bicubic FLIR heatmap and automatic human body heat alert ($\ge 33.5^\circ\text{C}$).
+- 🟡 **Digital Acoustic Tracking:** **INMP441** 24-bit I2S MEMS microphone with real-time VU meter and non-blocking WAV audio streaming.
+- 🔵 **Low-Latency Optical Feed:** **ESP32-CAM (OV2640)** streams live $640 \times 480$ MJPEG video with remote high-power LED searchlight control.
+- 🟣 **Neo-Brutalist GameBoy Console:** Embedded multi-touch D-pad, dedicated **A/B tank spin buttons**, live temperature telemetry, and an In-Flight Coalescing Control Scheduler.
+
+---
+
+## 🏗️ System Architecture
+
+```mermaid
+flowchart TD
+    subgraph GCS["📱 Field Operator Device (Phone / Tablet / Laptop)"]
+        UI["🎮 Neo-Brutalist GameBoy Web Console"]
+    end
+
+    subgraph S3["🧠 ESP32-S3 Master Tactical Controller (192.168.4.1 / Router IP)"]
+        C1["⚡ Core 1: Port 80 WebServer + Direct 6WD Motor Control + 1000ms Watchdog"]
+        C0["🌡️ Core 0: 8Hz MLX90640 Thermal Polling + 16kHz INMP441 I2S Audio"]
+    end
+
+    subgraph HW["⚙️ Rover Hardware & Satellite Nodes"]
+        MOT["🛞 3x TB6612FNG Drivers (6x DC Gearmotors)"]
+        MLX["🔥 MLX90640 Thermal Array (GPIO 1 & 2)"]
+        MIC["🎙️ INMP441 Digital Mic (GPIO 42, 41, 40)"]
+        CAM["📷 ESP32-CAM Video Satellite (192.168.4.2 / 192.168.5.1 / Router IP)"]
+    end
+
+    UI <-->|"Wi-Fi HTTP / MJPEG / WAV"| C1
+    C1 -->|"18 PWM & DIR Pins"| MOT
+    C0 <-->|"I2C 400kHz/800kHz"| MLX
+    C0 <--|"I2S DMA"| MIC
+    CAM <-->|"MJPEG /stream & /light"| UI
 ```
-                      +-----------------------------+
-                      |   Field Operator Device     |
-                      |  (Phone / Tablet / Laptop)  |
-                      +--------------+--------------+
-                                     |
-                          Wi-Fi: RubbleRover-Tactical-AP
-                                     |
-                                     v
-+------------------------------------+------------------------------------+
-|                   ESP32-S3 Master Tactical Controller                   |
-|                             (192.168.4.1)                               |
-|                                                                         |
-|  - Core 0: 8Hz Thermal Polling (MLX90640) + Audio Sampling (INMP441)   |
-|  - Core 1: WebServer (Port 80) + High-Torque Motor Control              |
-+-------------------+---------------------------------+-------------------+
-                    |                                 |
-           18 PWM & DIR Pins                  Wi-Fi Direct STA
-                    |                         (192.168.4.2 Handshake)
-                    v                                 v
-        +-----------------------+         +-----------------------+
-        |   3x TB6612 Drivers   |         |       ESP32-CAM       |
-        |   (6 DC Gearmotors)   |         |   Live Video Satellite|
-        +-----------------------+         +-----------------------+
-```
 
 ---
 
-## Wiring & Pinout
+## 🔌 Wiring & Pinout
 
-### 1. Motors (3x TB6612FNG)
-*All TB6612 `STBY` pins are hardwired to 3.3V.*
+> [!IMPORTANT]
+> **Silicon Safety Verified:** All 23 assigned ESP32-S3 pins strictly avoid Octal PSRAM pins (`GPIO 33–37`) and hardware strapping pins (`GPIO 0, 3, 45, 46`). All TB6612 `STBY` pins must be tied to **3.3V**.
 
-| Motor | Driver Net | ESP32-S3 Pin | Function |
-|---|---|---|---|
-| **Front Left** | `PWMA` / `AIN1` / `AIN2` | **GPIO 17** / **GPIO 18** / **GPIO 8** | Speed (PWM) / Dir 1 / Dir 2 |
-| **Front Right** | `PWMB` / `BIN1` / `BIN2` | **GPIO 11** / **GPIO 9** / **GPIO 10** | Speed (PWM) / Dir 1 / Dir 2 |
-| **Mid Left** | `PWMA` / `AIN1` / `AIN2` | **GPIO 4** / **GPIO 5** / **GPIO 6** | Speed (PWM) / Dir 1 / Dir 2 |
-| **Mid Right** | `PWMB` / `BIN1` / `BIN2` | **GPIO 16** / **GPIO 7** / **GPIO 15** | Speed (PWM) / Dir 1 / Dir 2 |
-| **Rear Left** | `PWMA` / `AIN1` / `AIN2` | **GPIO 12** / **GPIO 13** / **GPIO 14** | Speed (PWM) / Dir 1 / Dir 2 |
-| **Rear Right** | `PWMB` / `BIN1` / `BIN2` | **GPIO 21** / **GPIO 38** / **GPIO 47** | Speed (PWM) / Dir 1 / Dir 2 |
+### 1. Motors (3x TB6612FNG — 18 GPIOs)
 
-### 2. Sensors (Header J3)
-| Sensor | Net | ESP32-S3 Pin | Notes |
-|---|---|---|---|
-| **MLX90640** | `SCL` | **GPIO 1** | I2C Clock (with 4.7k pull-up) |
-| **MLX90640** | `SDA` | **GPIO 2** | I2C Data (with 4.7k pull-up) |
-| **INMP441** | `SCK` | **GPIO 42** | I2S Bit Clock (BCLK) |
-| **INMP441** | `WS` | **GPIO 41** | I2S Word Select (LRCK) |
-| **INMP441** | `SD` | **GPIO 40** | I2S Serial Data (DIN) |
-| **INMP441** | `L/R` | **GND** | Tied to GND (Left channel) |
+| Wheel Position | Driver Channel | PWM (Speed) | IN1 (Dir 1) | IN2 (Dir 2) | Default Polarity |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| 🛞 **Front-Left (FL)** | Driver #1 — Motor A | `GPIO 17` | `GPIO 18` | `GPIO 8` | 🔴 **Inverted (`-1`)** |
+| 🛞 **Front-Right (FR)** | Driver #1 — Motor B | `GPIO 11` | `GPIO 9` | `GPIO 10` | 🟢 **Normal (`+1`)** |
+| 🛞 **Mid-Left (ML)** | Driver #2 — Motor A | `GPIO 4` | `GPIO 5` | `GPIO 6` | 🔴 **Inverted (`-1`)** |
+| 🛞 **Mid-Right (MR)** | Driver #2 — Motor B | `GPIO 16` | `GPIO 7` | `GPIO 15` | 🟢 **Normal (`+1`)** |
+| 🛞 **Rear-Left (RL)** | Driver #3 — Motor A | `GPIO 12` | `GPIO 13` | `GPIO 14` | 🔴 **Inverted (`-1`)** |
+| 🛞 **Rear-Right (RR)** | Driver #3 — Motor B | `GPIO 21` | `GPIO 38` | `GPIO 47` | 🟢 **Normal (`+1`)** |
+
+### 2. Sensors (Header J3 — 5 GPIOs)
+
+| Sensor Module | Signal Net | ESP32-S3 Pin | Electrical Requirement |
+| :--- | :--- | :---: | :--- |
+| 🔥 **MLX90640 Thermal** | `SCL` (I2C Clock) | **`GPIO 1`** | 3.3V only + $4.7\text{k}\Omega$ pull-up to 3.3V |
+| 🔥 **MLX90640 Thermal** | `SDA` (I2C Data) | **`GPIO 2`** | 3.3V only + $4.7\text{k}\Omega$ pull-up to 3.3V |
+| 🎙️ **INMP441 Microphone** | `SCK` (Bit Clock) | **`GPIO 42`** | 3.3V only |
+| 🎙️ **INMP441 Microphone** | `WS` (Word Select) | **`GPIO 41`** | 3.3V only |
+| 🎙️ **INMP441 Microphone** | `SD` (Serial Data) | **`GPIO 40`** | 3.3V only |
+| 🎙️ **INMP441 Microphone** | `L/R` (Channel) | **`GND`** | **Hardwire to GND** (Selects Left Channel) |
 
 ---
 
-## Quick Setup & Flashing
+## 🚀 Quick Setup & Flashing
 
-### Step 1: Install Libraries in Arduino IDE
-Open the **Library Manager** in Arduino IDE and install:
-1. `Adafruit MLX90640` (v1.1.2+)
-2. `Adafruit BusIO`
+### Step 1: Install Required Libraries
+In Arduino IDE, open **Tools → Manage Libraries** and install:
+1. 📦 **`Adafruit MLX90640`** *(v1.1.2+)*
+2. 📦 **`Adafruit BusIO`**
 
-### Step 2: Flash the ESP32-S3 Master
-1. Open `RubbleRover_S3_MotorController/RubbleRover_S3_MotorController.ino`.
-2. Select Board: **ESP32S3 Dev Module**.
-3. Set Tools settings:
-   - **USB CDC On Boot:** `Enabled`
-   - **Partition Scheme:** `Huge APP (3MB No OTA/1MB SPIFFS)`
-   - **Upload Mode:** `UART0 / Hardware CDC`
-   - **USB Mode:** `Hardware CDC and JTAG`
-   - **PSRAM:** `Disabled`
-4. Select your COM port and click **Upload**.
+### Step 2: Flash the ESP32-S3 Master Controller
+1. Open either:
+   - **Edition 1 (Direct AP):** [`RubbleRover_S3_MotorController/RubbleRover_S3_MotorController.ino`](RubbleRover_S3_MotorController/RubbleRover_S3_MotorController.ino)
+   - **Edition 2 (Router + AP):** [`Firmware_v2_Router_And_AP/RubbleRover_S3_MotorController_v2/RubbleRover_S3_MotorController_v2.ino`](Firmware_v2_Router_And_AP/RubbleRover_S3_MotorController_v2/RubbleRover_S3_MotorController_v2.ino)
+2. Select Board: **ESP32S3 Dev Module** and configure **Tools**:
 
-### Step 3: Flash the ESP32-CAM
-1. Open `RubbleRover_CAM_SurveillanceHub/RubbleRover_CAM_SurveillanceHub.ino`.
+| Arduino IDE Setting | Required Value | Why It Matters |
+| :--- | :--- | :--- |
+| **USB CDC On Boot** | 🟢 **`Enabled`** | **CRITICAL:** Routes `Serial.println()` to the USB-C port |
+| **Partition Scheme** | 🟣 **`Huge APP (3MB No OTA/1MB SPIFFS)`** | Fits full WebApp + Wi-Fi + Thermal stack |
+| **Upload Mode** | 🔵 **`UART0 / Hardware CDC`** | Ensures reliable native USB flashing |
+| **USB Mode** | 🔵 **`Hardware CDC and JTAG`** | Enables native USB serial monitor |
+| **PSRAM** | 🟡 **`Disabled`** | Prevents Octal/Quad PSRAM pin conflicts |
+
+3. Select your COM port and click **Upload**.
+
+### Step 3: Flash the ESP32-CAM Video Satellite
+1. Open either:
+   - **Edition 1 (Auto S3 Handshake):** [`RubbleRover_CAM_SurveillanceHub/RubbleRover_CAM_SurveillanceHub.ino`](RubbleRover_CAM_SurveillanceHub/RubbleRover_CAM_SurveillanceHub.ino)
+   - **Edition 2 (Independent Router + AP):** [`Firmware_v2_Router_And_AP/RubbleRover_CAM_SurveillanceHub_v2/RubbleRover_CAM_SurveillanceHub_v2.ino`](Firmware_v2_Router_And_AP/RubbleRover_CAM_SurveillanceHub_v2/RubbleRover_CAM_SurveillanceHub_v2.ino)
 2. Select Board: **AI Thinker ESP32-CAM**.
-3. Bridge `GPIO 0` to `GND`, upload, then remove bridge and press **RST**.
+3. Bridge `GPIO 0` to `GND` to upload, then **remove the `GPIO 0` bridge** and press **RST**.
 
 ### Step 4: Connect & Drive
-1. On your phone or laptop, connect to Wi-Fi:
-   - **SSID:** `RubbleRover-Tactical-AP`
-   - **Password:** `RubbleRover2026`
-2. Open your browser and go to: `http://192.168.4.1`
+1. Connect your phone or laptop to Wi-Fi:
+   - 📶 **SSID:** `RubbleRover-Tactical-AP` *(Password: `RubbleRover2026`)*
+2. *(On smartphones: temporarily turn OFF Mobile Cellular Data so the browser stays on the rover network).*
+3. Open your browser to **`http://192.168.4.1`** (or the Router IP shown in Serial Monitor for Edition 2).
 
 ---
 
-## Expected Serial Monitor Output (How to Know It Works)
+## 🖥️ Expected Serial Monitor Output (How to Know It Works)
 
-Open the Serial Monitor in Arduino IDE set to **115200 baud**. Below is the exact output sequence that confirms all systems are working properly.
+Open the Arduino IDE Serial Monitor at **`115200 baud`** and press **`RST`** on the board.
 
 ### 1. ESP32-S3 Master Controller (Normal Boot)
-
-When you press the `RST` button, you should see this banner and initialization log:
 
 ```text
 ====================================================================
   RUBBLEROVER: DIRECT-DRIVE 6WD CONTROLLER ONLINE
   Motor A: Inverted (-1) | Motor B: Normal (+1) | High-Z Coasting
 ====================================================================
+[MOTORS] All 18 pins configured as OUTPUT. High-Z Coast Stop active.
 [WIFI-AP] Online! SSID: RubbleRover-Tactical-AP | IP: 192.168.4.1
 [AUDIO] INMP441 Initialized via ESP_I2S (16kHz).
 [I2C] Initializing I2C for MLX90640...
 [I2C] MLX90640 detected at 0x33 (SDA:1, SCL:2)!
 [MLX90640] MLX90640 Initialized Successfully!
 [HTTP] Web Server Online on Port 80
-[MOTORS] All 18 pins configured as OUTPUT. High-Z Coast Stop active.
 [HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:2%) | IP:192.168.4.1
 ```
 
-#### What each line confirms:
-- **`[WIFI-AP] Online!`** $\rightarrow$ The Wi-Fi Access Point is broadcasting and ready for connections at `192.168.4.1`.
-- **`[AUDIO] INMP441 Initialized`** $\rightarrow$ I2S microphone bus on GPIO 42/41/40 is active and sampling at 16 kHz.
-- **`[I2C] MLX90640 detected at 0x33`** $\rightarrow$ I2C communication succeeded on SDA: GPIO 2, SCL: GPIO 1.
-- **`[MOTORS] All 18 pins configured... High-Z Coast`** $\rightarrow$ All 18 motor pins are set to LOW. Motors spin freely by hand without dynamic brake drag.
-- **`[HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:X%)`** $\rightarrow$ The background core task is alive and healthy, printing every 2.5 seconds. Clap near the mic to see `Lvl:%` increase!
+| Serial Log Line | What It Confirms |
+| :--- | :--- |
+| 🟢 `[MOTORS] High-Z Coast Stop active` | All 18 motor pins are driven `LOW`. Wheels spin freely by hand with zero dynamic brake drag. |
+| 🟢 `[WIFI-AP] Online! ... 192.168.4.1` | SoftAP is broadcasting and ready for your phone or laptop. |
+| 🟢 `[AUDIO] INMP441 Initialized` | I2S microphone on `GPIO 42/41/40` is sampling at 16 kHz. |
+| 🟢 `[I2C] MLX90640 detected at 0x33` | Thermal camera is communicating on `SDA:2, SCL:1` (or auto-swapped if wires were reversed). |
+| 🟢 `[HEARTBEAT] ... Mic:ONLINE (Lvl:X%)` | Core 0 task is healthy, printing every 2.5s. Clap near the mic to watch `Lvl:%` jump! |
 
 ### 2. Runtime Event Logs on ESP32-S3
 
-Once operating, the Serial Monitor will log key events:
-
-- **When ESP32-CAM connects and registers:**
+- 📷 **When ESP32-CAM connects and registers:**
   ```text
   [CAMERA-HUB] Registered at IP: 192.168.4.2
   ```
-- **When phone/laptop connects to Wi-Fi:**
-  ```text
-  [HEARTBEAT] Clients:1 | MLX:ONLINE | Mic:ONLINE (Lvl:6%) | IP:192.168.4.1
-  ```
-- **When running the 6-motor diagnostic test (`http://192.168.4.1/test_motors`):**
+- 🔧 **When running the 6-motor diagnostic (`http://192.168.4.1/test_motors`):**
   ```text
   --- STARTING 6-MOTOR HARDWARE DIAGNOSTIC ---
   [DIAG 1/6] Front-Left (Motor A)...
@@ -157,100 +261,68 @@ Once operating, the Serial Monitor will log key events:
   [DIAG 6/6] Rear-Right (Motor B)...
   --- MOTOR DIAGNOSTIC COMPLETE ---
   ```
-- **If Wi-Fi signal is lost while driving (Watchdog Failsafe):**
+- 🛡️ **When operator releases controls or disconnects (>1000 ms Watchdog):**
   ```text
   [WATCHDOG] Failsafe timeout! Stopping motors.
   ```
 
 ### 3. ESP32-CAM Video Satellite (Normal Boot)
 
-When powering on the ESP32-CAM (with GPIO 0 jumper removed), its Serial Monitor (115200 baud) should print:
-
 ```text
 ====================================================================
   RUBBLEROVER: ESP32-CAM HIGH-SPEED VIDEO SATELLITE
   Instant Handshake & Low-Latency Stream Architecture
 ====================================================================
+[CAMERA] OV2640 Initialized Successfully (640x480, Low Latency)!
 [WIFI-STA] Connecting immediately to Master AP: RubbleRover-Tactical-AP (Ch 1)...
-.
 [WIFI-STA] CONNECTED in 240ms! Node IP: 192.168.4.2
 [HANDSHAKE] Registered 192.168.4.2 with ESP32-S3 Master!
-[CAMERA] MJPEG Streamer ready on http://192.168.4.2/stream
+[HTTP] Camera MJPEG Streaming Server online on port 80
 ```
 
-- **When Searchlight is toggled from the WebApp:**
-  ```text
-  [LIGHT] Searchlight LED state: 1
-  ```
+---
+
+## 🌐 Firmware Edition 2: Dual Wi-Fi Router + AP Mode (`Firmware_v2_Router_And_AP/`)
+
+> [!NOTE]
+> Use **Edition 2** when you want both the **Motor Controller** and the **Camera Surveillance Hub** to connect to an external **Wi-Fi Router / Hotspot (`STA`)** while simultaneously broadcasting their own independent **Access Points (`AP`)**.
+
+| Firmware Sketch | Simultaneous AP Mode | Simultaneous Router Mode (`STA`) | Special Features |
+| :--- | :--- | :--- | :--- |
+| 🧠 **[S3 Motor Controller v2](Firmware_v2_Router_And_AP/RubbleRover_S3_MotorController_v2/RubbleRover_S3_MotorController_v2.ino)** | **SSID:** `RubbleRover-Tactical-AP`<br>**IP:** `http://192.168.4.1` | Joins `routerSSID` (`DHCP IP` printed in Serial Monitor) | Click top Wi-Fi badge on HUD to join a router; click `CAM IP` header to switch camera IP anytime. |
+| 📷 **[CAM Surveillance Hub v2](Firmware_v2_Router_And_AP/RubbleRover_CAM_SurveillanceHub_v2/RubbleRover_CAM_SurveillanceHub_v2.ino)** | **SSID:** `RubbleRover-CAM-AP`<br>**IP:** `http://192.168.5.1` | Joins `routerSSID` (`DHCP IP` printed in Serial Monitor) | Includes its own standalone **Camera Web Console** at `http://192.168.5.1/` with video, searchlight & router setup! |
 
 ---
 
-## Controls
+## 🎮 Tactical Controls
 
-| Control | Action | Keyboard Shortcut |
-|---|---|---|
-| **D-Pad Up** | Forward | `W` / `↑` |
-| **D-Pad Down** | Reverse | `S` / `↓` |
-| **D-Pad Left** | Steer Left | `A` / `←` |
-| **D-Pad Right** | Steer Right | `D` / `→` |
-| **Button B** | **Spin Left ↺** (Tank pivot in place) | `Q` / `B` |
-| **Button A** | **Spin Right ↻** (Tank pivot in place) | `E` / `A` |
-| **E-Stop** | Emergency Brake | `Space` |
-| **Speed Gears** | Crawl (40%) / Normal (70%) / Turbo (100%) | Click button |
-| **MOT A / B** | Invert Left or Right Motor Polarity | Click button |
-
----
-
-## Firmware Edition 2: Dual Wi-Fi Router + AP Mode (`Firmware_v2_Router_And_AP/`)
-
-If you want both the **ESP32-S3 Motor Controller** and the **ESP32-CAM Surveillance Hub** to operate on independent connections—capable of joining a **Wi-Fi Router / Hotspot (`STA`)** while simultaneously broadcasting their own **Access Points (`AP`)**—use the 2nd firmware folder:
-
-### 1. `Firmware_v2_Router_And_AP/RubbleRover_S3_MotorController_v2/`
-- **Simultaneous Router + AP (`WIFI_AP_STA`):**
-  - Broadcasts **`RubbleRover-Tactical-AP`** (`RubbleRover2026`) at `http://192.168.4.1`.
-  - Simultaneously connects to your **Wi-Fi Router** (`routerSSID` / `routerPass` in the code, or click the top Wi-Fi badge on the HUD to join a router dynamically via `/set_wifi?ssid=...&pass=...`).
-  - Prints both the **AP IP (`192.168.4.1`)** and the **Router IP** in the Serial Monitor every 2.5s:
-    ```text
-    [HEARTBEAT] AP:192.168.4.1 (Clients:0) | Router:192.168.1.105 | MLX:ONLINE | Mic:ONLINE (Lvl:4%)
-    ```
-  - Click the **`CAM IP: ... (SET)`** header on the GameBoy HUD to point the video player to any Camera Router IP or AP IP.
-
-### 2. `Firmware_v2_Router_And_AP/RubbleRover_CAM_SurveillanceHub_v2/`
-- **Independent Dual Wi-Fi Camera Hub (`WIFI_AP_STA`):**
-  - Broadcasts its own standalone Camera Access Point: **`RubbleRover-CAM-AP`** (`RubbleRover2026`) at `http://192.168.5.1`.
-  - Simultaneously connects to your **Wi-Fi Router** (`routerSSID` / `routerPass` in the code, or via the built-in web form at `http://192.168.5.1`).
-  - Includes a built-in **Standalone Camera Surveillance Web Console** at `http://192.168.5.1/` (or `http://<CAM_ROUTER_IP>/`) with live MJPEG stream (`/stream` & `:81/stream`), Searchlight toggle (`/light`), and Router Wi-Fi setup.
+| Control Input | Rover Action | Keyboard Shortcut |
+| :--- | :--- | :---: |
+| ⬆️ **D-Pad Up** | Drive All 6 Wheels Forward | <kbd>W</kbd> / <kbd>↑</kbd> |
+| ⬇️ **D-Pad Down** | Drive All 6 Wheels Reverse | <kbd>S</kbd> / <kbd>↓</kbd> |
+| ⬅️ **D-Pad Left** | Arc Steer Left | <kbd>A</kbd> / <kbd>←</kbd> |
+| ➡️ **D-Pad Right** | Arc Steer Right | <kbd>D</kbd> / <kbd>→</kbd> |
+| 🔴 **Button B** | **Spin Left ↺** *(Tank Pivot Counter-Clockwise)* | <kbd>Q</kbd> / <kbd>B</kbd> |
+| 🔴 **Button A** | **Spin Right ↻** *(Tank Pivot Clockwise)* | <kbd>E</kbd> / <kbd>A</kbd> |
+| 🛑 **E-Stop** | Instant Emergency Stop (High-Z Coast) | <kbd>Space</kbd> |
+| ⚙️ **Speed Gears** | **40% Crawl** (`180`) / **70% Norm** (`220`) / **100% Turbo** (`255`) | Click HUD Button |
+| 🔄 **MOT A / B** | Live Left / Right Motor Polarity Inversion | Click HUD Button |
 
 ---
 
-## Repository Files
+## 🛠️ Troubleshooting Quick-Reference
 
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md): **Comprehensive troubleshooting & hardware debugging guide.**
-- `RubbleRover_S3_MotorController/`: **Edition 1 (Direct AP)** Master controller sketch for ESP32-S3.
-- `RubbleRover_CAM_SurveillanceHub/`: **Edition 1 (Direct S3 Handshake)** Video streamer sketch for ESP32-CAM.
-- `Firmware_v2_Router_And_AP/RubbleRover_S3_MotorController_v2/`: **Edition 2 (Router + AP)** Dual Wi-Fi Master controller sketch for ESP32-S3.
-- `Firmware_v2_Router_And_AP/RubbleRover_CAM_SurveillanceHub_v2/`: **Edition 2 (Independent Router + AP)** Standalone Dual Wi-Fi Surveillance sketch for ESP32-CAM.
-- `RubbleRover_WebApp.html`: Standalone GameBoy GCS interface.
-- `ESP32_S3_ROVER_PINOUT.csv`: Complete pin assignment table.
-- `ESP32_S3_ROVER_PINOUT_PCB_GUIDE.txt`: Hardware wiring and PCB routing manual.
+> [!WARNING]
+> Encountering a blank Serial Monitor, stuck download mode, stiff motors, or offline camera? Click the button below to open the full color-coded **Troubleshooting & 21-Error Decoder Guide**:
 
----
+<div align="center">
 
-## Troubleshooting
+[![Open Full Troubleshooting Guide](https://img.shields.io/badge/%F0%9F%9B%A0%EF%B8%8F_OPEN_FULL_TROUBLESHOOTING_%26_SERIAL_DECODER_GUIDE-FF6B6B?style=for-the-badge)](TROUBLESHOOTING.md)
 
-Encountering an issue? Refer to the full [TROUBLESHOOTING.md](TROUBLESHOOTING.md) guide.
-
-**Quick-Fix Summary:**
-- **ESP32-S3 stuck in download mode:** Unplug USB, release `BOOT` button, replug, click `RST` once.
-- **Serial Monitor blank:** Set **Tools → USB CDC On Boot → Enabled** in Arduino IDE and re-flash.
-- **Motors stiff / hard to turn:** Upload direct-drive firmware; `stopMotors()` sets pins LOW for neutral High-Z coast.
-- **Motors won't move:** Ensure TB6612 `STBY` is wired to 3.3V, VM battery is connected, and battery ground is tied to ESP32 GND.
-- **Web App won't open at 192.168.4.1:** Turn OFF mobile/cellular data on your phone so it doesn't bypass the rover AP.
-- **ESP32-CAM stream offline:** Remove programming jumper on GPIO 0; ensure camera is powered from 5V rail.
-- **Serial Monitor Error Decoder:** See [TROUBLESHOOTING.md Section 9](TROUBLESHOOTING.md#9-serial-monitor-error-message-decoder-what-if-i-see-this) for exact error string translations (Brownout, Guru Meditation, I2C timeouts, gibberish, and camera errors).
+</div>
 
 ---
 
-## License
+## 📜 License
 
-[MIT License](LICENSE)
+Released under the [MIT License](LICENSE).
