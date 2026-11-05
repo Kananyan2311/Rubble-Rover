@@ -8,7 +8,7 @@
 [![ESP32-CAM Video](https://img.shields.io/badge/OPTICAL-ESP32--CAM%20OV2640-4D96FF?style=for-the-badge&logo=espressif&logoColor=white)](RubbleRover_CAM_SurveillanceHub/RubbleRover_CAM_SurveillanceHub.ino)
 [![MLX90640 Thermal](https://img.shields.io/badge/THERMAL-MLX90640%2032x24%20FLIR-FFD21E?style=for-the-badge&logoColor=black)](#2-sensors-header-j3)
 [![INMP441 Audio](https://img.shields.io/badge/AUDIO-INMP441%20I2S%20MEMS-4ECCA3?style=for-the-badge&logoColor=black)](#2-sensors-header-j3)
-[![License MIT](https://img.shields.io/badge/LICENSE-MIT-9B5DE5?style=for-the-badge)](LICENSE)
+[![Capstone Defense Q&A](https://img.shields.io/badge/%F0%9F%8E%93_CAPSTONE_Q%26A-30_PANEL_ANSWERS-9B5DE5?style=for-the-badge)](CAPSTONE_PANEL_QA.md)
 
 </div>
 
@@ -79,11 +79,11 @@
       <sub><b>Edition 2: Independent Camera Router Connection + Own AP (<code>192.168.5.1</code>)</b></sub>
     </td>
     <td align="center" width="33%">
-      <a href="LICENSE">
-        <img src="https://img.shields.io/badge/%F0%9F%93%9C_MIT_LICENSE-VIEW_TERMS-00BBF9?style=for-the-badge" alt="MIT License" />
+      <a href="CAPSTONE_PANEL_QA.md">
+        <img src="https://img.shields.io/badge/%F0%9F%8E%93_CAPSTONE_PANEL_Q%26A-30_QUESTIONS-00BBF9?style=for-the-badge" alt="Capstone Panel Q&A" />
       </a>
       <br />
-      <sub><b>Open-Source MIT Hardware & Software License</b></sub>
+      <sub><b>30 Oral Defense Panel Questions & Technical Answers Guide</b></sub>
     </td>
   </tr>
 </table>

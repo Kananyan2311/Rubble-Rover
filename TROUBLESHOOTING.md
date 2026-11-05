@@ -7,6 +7,7 @@
 [![Pinout CSV](https://img.shields.io/badge/%F0%9F%93%8C_PINOUT_CSV-4ECCA3?style=for-the-badge&logoColor=black)](ESP32_S3_ROVER_PINOUT.csv)
 [![PCB Guide](https://img.shields.io/badge/%F0%9F%93%90_PCB_MANUAL-FFD21E?style=for-the-badge&logoColor=black)](ESP32_S3_ROVER_PINOUT_PCB_GUIDE.txt)
 [![WebApp HTML](https://img.shields.io/badge/%F0%9F%8E%AE_WEBAPP_UI-9B5DE5?style=for-the-badge)](RubbleRover_WebApp.html)
+[![Capstone Defense Q&A](https://img.shields.io/badge/%F0%9F%8E%93_CAPSTONE_PANEL_Q%26A-00BBF9?style=for-the-badge)](CAPSTONE_PANEL_QA.md)
 
 </div>
 
