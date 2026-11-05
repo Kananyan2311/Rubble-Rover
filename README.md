@@ -8,7 +8,7 @@ Built with **ESP32-S3** (Master Controller & Sensor Hub) + **ESP32-CAM** (Optica
 
 ## Features
 
-- **6WD Skid-Steer Mobility:** Powered by 3x TB6612FNG dual motor drivers (6 DC gearmotors) with 1 kHz PWM and starting torque compensation.
+- **6WD Skid-Steer Mobility:** Powered by 3x TB6612FNG dual motor drivers (6 DC gearmotors) with high-torque direct digital drive and High-Z neutral coasting.
 - **Thermal Imaging:** MLX90640 Far-Infrared array (32x24 pixels) with live heatmap and automatic survivor body heat alert ($\ge 33.5^\circ\text{C}$).
 - **Digital Audio Stream:** INMP441 I2S MEMS microphone with real-time loudness VU meter.
 - **Dedicated Video Feed:** ESP32-CAM streams live 640x480 MJPEG video with searchlight control.
@@ -33,7 +33,7 @@ Built with **ESP32-S3** (Master Controller & Sensor Hub) + **ESP32-CAM** (Optica
 |                             (192.168.4.1)                               |
 |                                                                         |
 |  - Core 0: 8Hz Thermal Polling (MLX90640) + Audio Sampling (INMP441)   |
-|  - Core 1: WebServer (Port 80) + 1kHz High-Torque Motor PWM             |
+|  - Core 1: WebServer (Port 80) + High-Torque Motor Control              |
 +-------------------+---------------------------------+-------------------+
                     |                                 |
            18 PWM & DIR Pins                  Wi-Fi Direct STA
@@ -104,9 +104,90 @@ Open the **Library Manager** in Arduino IDE and install:
 
 ---
 
+## Expected Serial Monitor Output (How to Know It Works)
+
+Open the Serial Monitor in Arduino IDE set to **115200 baud**. Below is the exact output sequence that confirms all systems are working properly.
+
+### 1. ESP32-S3 Master Controller (Normal Boot)
+
+When you press the `RST` button, you should see this banner and initialization log:
+
+```text
+====================================================================
+  RUBBLEROVER: DIRECT-DRIVE 6WD CONTROLLER ONLINE
+  Motor A: Inverted (-1) | Motor B: Normal (+1) | High-Z Coasting
+====================================================================
+[WIFI-AP] Online! SSID: RubbleRover-Tactical-AP | IP: 192.168.4.1
+[AUDIO] INMP441 Initialized via ESP_I2S (16kHz).
+[I2C] Initializing I2C for MLX90640...
+[I2C] MLX90640 detected at 0x33 (SDA:1, SCL:2)!
+[MLX90640] MLX90640 Initialized Successfully!
+[HTTP] Web Server Online on Port 80
+[MOTORS] All 18 pins configured as OUTPUT. High-Z Coast Stop active.
+[HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:2%) | IP:192.168.4.1
+```
+
+#### What each line confirms:
+- **`[WIFI-AP] Online!`** $\rightarrow$ The Wi-Fi Access Point is broadcasting and ready for connections at `192.168.4.1`.
+- **`[AUDIO] INMP441 Initialized`** $\rightarrow$ I2S microphone bus on GPIO 42/41/40 is active and sampling at 16 kHz.
+- **`[I2C] MLX90640 detected at 0x33`** $\rightarrow$ I2C communication succeeded on SDA: GPIO 2, SCL: GPIO 1.
+- **`[MOTORS] All 18 pins configured... High-Z Coast`** $\rightarrow$ All 18 motor pins are set to LOW. Motors spin freely by hand without dynamic brake drag.
+- **`[HEARTBEAT] Clients:0 | MLX:ONLINE | Mic:ONLINE (Lvl:X%)`** $\rightarrow$ The background core task is alive and healthy, printing every 2.5 seconds. Clap near the mic to see `Lvl:%` increase!
+
+### 2. Runtime Event Logs on ESP32-S3
+
+Once operating, the Serial Monitor will log key events:
+
+- **When ESP32-CAM connects and registers:**
+  ```text
+  [CAMERA-HUB] Registered at IP: 192.168.4.2
+  ```
+- **When phone/laptop connects to Wi-Fi:**
+  ```text
+  [HEARTBEAT] Clients:1 | MLX:ONLINE | Mic:ONLINE (Lvl:6%) | IP:192.168.4.1
+  ```
+- **When running the 6-motor diagnostic test (`http://192.168.4.1/test_motors`):**
+  ```text
+  --- STARTING 6-MOTOR HARDWARE DIAGNOSTIC ---
+  [DIAG 1/6] Front-Left (Motor A)...
+  [DIAG 2/6] Front-Right (Motor B)...
+  [DIAG 3/6] Mid-Left (Motor A)...
+  [DIAG 4/6] Mid-Right (Motor B)...
+  [DIAG 5/6] Rear-Left (Motor A)...
+  [DIAG 6/6] Rear-Right (Motor B)...
+  --- MOTOR DIAGNOSTIC COMPLETE ---
+  ```
+- **If Wi-Fi signal is lost while driving (Watchdog Failsafe):**
+  ```text
+  [WATCHDOG] Failsafe timeout! Stopping motors.
+  ```
+
+### 3. ESP32-CAM Video Satellite (Normal Boot)
+
+When powering on the ESP32-CAM (with GPIO 0 jumper removed), its Serial Monitor (115200 baud) should print:
+
+```text
+====================================================================
+  RUBBLEROVER: ESP32-CAM HIGH-SPEED VIDEO SATELLITE
+  Instant Handshake & Low-Latency Stream Architecture
+====================================================================
+[WIFI-STA] Connecting immediately to Master AP: RubbleRover-Tactical-AP (Ch 1)...
+.
+[WIFI-STA] CONNECTED in 240ms! Node IP: 192.168.4.2
+[HANDSHAKE] Registered 192.168.4.2 with ESP32-S3 Master!
+[CAMERA] MJPEG Streamer ready on http://192.168.4.2/stream
+```
+
+- **When Searchlight is toggled from the WebApp:**
+  ```text
+  [LIGHT] Searchlight LED state: 1
+  ```
+
+---
+
 ## Controls
 
-| Control | Action | Keyboard |
+| Control | Action | Keyboard Shortcut |
 |---|---|---|
 | **D-Pad Up** | Forward | `W` / `↑` |
 | **D-Pad Down** | Reverse | `S` / `↓` |
@@ -115,7 +196,7 @@ Open the **Library Manager** in Arduino IDE and install:
 | **Button B** | **Spin Left ↺** (Tank pivot in place) | `Q` / `B` |
 | **Button A** | **Spin Right ↻** (Tank pivot in place) | `E` / `A` |
 | **E-Stop** | Emergency Brake | `Space` |
-| **Speed Gears** | Crawl (40%) / Norm (70%) / Turbo (100%) | Click button |
+| **Speed Gears** | Crawl (40%) / Normal (70%) / Turbo (100%) | Click button |
 | **MOT A / B** | Invert Left or Right Motor Polarity | Click button |
 
 ---
@@ -148,4 +229,3 @@ Encountering an issue? Refer to the full [TROUBLESHOOTING.md](TROUBLESHOOTING.md
 ## License
 
 [MIT License](LICENSE)
-#
