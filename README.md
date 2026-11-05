@@ -201,11 +201,35 @@ When powering on the ESP32-CAM (with GPIO 0 jumper removed), its Serial Monitor 
 
 ---
 
+## Firmware Edition 2: Dual Wi-Fi Router + AP Mode (`Firmware_v2_Router_And_AP/`)
+
+If you want both the **ESP32-S3 Motor Controller** and the **ESP32-CAM Surveillance Hub** to operate on independent connections—capable of joining a **Wi-Fi Router / Hotspot (`STA`)** while simultaneously broadcasting their own **Access Points (`AP`)**—use the 2nd firmware folder:
+
+### 1. `Firmware_v2_Router_And_AP/RubbleRover_S3_MotorController_v2/`
+- **Simultaneous Router + AP (`WIFI_AP_STA`):**
+  - Broadcasts **`RubbleRover-Tactical-AP`** (`RubbleRover2026`) at `http://192.168.4.1`.
+  - Simultaneously connects to your **Wi-Fi Router** (`routerSSID` / `routerPass` in the code, or click the top Wi-Fi badge on the HUD to join a router dynamically via `/set_wifi?ssid=...&pass=...`).
+  - Prints both the **AP IP (`192.168.4.1`)** and the **Router IP** in the Serial Monitor every 2.5s:
+    ```text
+    [HEARTBEAT] AP:192.168.4.1 (Clients:0) | Router:192.168.1.105 | MLX:ONLINE | Mic:ONLINE (Lvl:4%)
+    ```
+  - Click the **`CAM IP: ... (SET)`** header on the GameBoy HUD to point the video player to any Camera Router IP or AP IP.
+
+### 2. `Firmware_v2_Router_And_AP/RubbleRover_CAM_SurveillanceHub_v2/`
+- **Independent Dual Wi-Fi Camera Hub (`WIFI_AP_STA`):**
+  - Broadcasts its own standalone Camera Access Point: **`RubbleRover-CAM-AP`** (`RubbleRover2026`) at `http://192.168.5.1`.
+  - Simultaneously connects to your **Wi-Fi Router** (`routerSSID` / `routerPass` in the code, or via the built-in web form at `http://192.168.5.1`).
+  - Includes a built-in **Standalone Camera Surveillance Web Console** at `http://192.168.5.1/` (or `http://<CAM_ROUTER_IP>/`) with live MJPEG stream (`/stream` & `:81/stream`), Searchlight toggle (`/light`), and Router Wi-Fi setup.
+
+---
+
 ## Repository Files
 
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md): **Comprehensive troubleshooting & hardware debugging guide.**
-- `RubbleRover_S3_MotorController/`: Master controller sketch for ESP32-S3 (`.ino` + `rubble_rover_web.h`).
-- `RubbleRover_CAM_SurveillanceHub/`: Video streamer sketch for ESP32-CAM (`.ino`).
+- `RubbleRover_S3_MotorController/`: **Edition 1 (Direct AP)** Master controller sketch for ESP32-S3.
+- `RubbleRover_CAM_SurveillanceHub/`: **Edition 1 (Direct S3 Handshake)** Video streamer sketch for ESP32-CAM.
+- `Firmware_v2_Router_And_AP/RubbleRover_S3_MotorController_v2/`: **Edition 2 (Router + AP)** Dual Wi-Fi Master controller sketch for ESP32-S3.
+- `Firmware_v2_Router_And_AP/RubbleRover_CAM_SurveillanceHub_v2/`: **Edition 2 (Independent Router + AP)** Standalone Dual Wi-Fi Surveillance sketch for ESP32-CAM.
 - `RubbleRover_WebApp.html`: Standalone GameBoy GCS interface.
 - `ESP32_S3_ROVER_PINOUT.csv`: Complete pin assignment table.
 - `ESP32_S3_ROVER_PINOUT_PCB_GUIDE.txt`: Hardware wiring and PCB routing manual.
