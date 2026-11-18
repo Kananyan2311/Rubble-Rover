@@ -1316,8 +1316,7 @@ void setup() {
 
   // 3B. Connect to External Wi-Fi Router / Hotspot (if configured)
   if (routerSSID.length() > 0 && routerSSID != "YOUR_WIFI_ROUTER_SSID") {
-    Serial.printf("[WIFI-STA] Connecting to Wi-Fi Router: %s ...
-", routerSSID.c_str());
+    Serial.printf("[WIFI-STA] Connecting to Wi-Fi Router: %s ...\n", routerSSID.c_str());
     WiFi.begin(routerSSID.c_str(), routerPass.c_str());
     unsigned long startWait = millis();
     while (WiFi.status() != WL_CONNECTED && (millis() - startWait < 6000)) {
