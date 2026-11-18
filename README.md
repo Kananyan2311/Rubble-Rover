@@ -111,7 +111,7 @@
 > [!TIP]
 > **Built for Zero-Infrastructure Disaster Zones:** Rubble Rover operates with **zero external internet or router dependencies** in Edition 1, or seamlessly bridges into an existing **Wi-Fi Router + Fallback AP** in Edition 2.
 
-- 🟢 **6WD High-Torque Skid-Steer Mobility:** Powered by **3x TB6612FNG** dual H-bridge drivers (6 DC gearmotors) with direct digital full-torque drive, default Motor A physical inversion (`polarityA = -1`), and **High-Z Neutral Coasting** (wheels spin freely by hand when idle).
+- 🟢 **6WD High-Torque Skid-Steer Mobility:** Powered by **ZK-BM1 Dual 10A H-Bridge** dual H-bridge drivers (6 DC gearmotors) with direct digital full-torque drive, default Motor A physical inversion (`polarityA = -1`), and **High-Z Neutral Coasting** (wheels spin freely by hand when idle).
 - 🔴 **Survivor Thermal Imaging:** **MLX90640** Far-Infrared array ($32 \times 24$ pixels) with live bicubic FLIR heatmap and automatic human body heat alert ($\ge 33.5^\circ\text{C}$).
 - 🟡 **Digital Acoustic Tracking:** **INMP441** 24-bit I2S MEMS microphone with real-time VU meter and non-blocking WAV audio streaming.
 - 🔵 **Low-Latency Optical Feed:** **ESP32-CAM (OV2640)** streams live $640 \times 480$ MJPEG video with remote high-power LED searchlight control.
@@ -133,14 +133,14 @@ flowchart TD
     end
 
     subgraph HW["⚙️ Rover Hardware & Satellite Nodes"]
-        MOT["🛞 3x TB6612FNG Drivers (6x DC Gearmotors)"]
+        MOT["🛞 ZK-BM1 Dual 10A H-Bridge Drivers (6x DC Gearmotors)"]
         MLX["🔥 MLX90640 Thermal Array (GPIO 1 & 2)"]
         MIC["🎙️ INMP441 Digital Mic (GPIO 42, 41, 40)"]
         CAM["📷 ESP32-CAM Video Satellite (192.168.4.2 / 192.168.5.1 / Router IP)"]
     end
 
     UI <-->|"Wi-Fi HTTP / MJPEG / WAV"| C1
-    C1 -->|"18 PWM & DIR Pins"| MOT
+    C1 -->|"4 ZK-BM1 Pins (GPIO 4,5,6,7)"| MOT
     C0 <-->|"I2C 400kHz/800kHz"| MLX
     C0 <--|"I2S DMA"| MIC
     CAM <-->|"MJPEG /stream & /light"| UI
@@ -153,16 +153,14 @@ flowchart TD
 > [!IMPORTANT]
 > **Silicon Safety Verified:** All 23 assigned ESP32-S3 pins strictly avoid Octal PSRAM pins (`GPIO 33–37`) and hardware strapping pins (`GPIO 0, 3, 45, 46`). All TB6612 `STBY` pins must be tied to **3.3V**.
 
-### 1. Motors (3x TB6612FNG — 18 GPIOs)
+### 1. Motors (ZK-BM1 Dual 10A MOSFET H-Bridge — 4 Contiguous GPIOs: `4, 5, 6, 7`)
 
-| Wheel Position | Driver Channel | PWM (Speed) | IN1 (Dir 1) | IN2 (Dir 2) | Default Polarity |
+*3 Left Motors (`FL + ML + RL`) are wired in parallel on **Channel 1 (`MOTOR1`)**, and 3 Right Motors (`FR + MR + RR`) are wired in parallel on **Channel 2 (`MOTOR2`)** to drive all 6 wheels in one go!*
+
+| Parallel Motor Bank | ZK-BM1 Channel | Input Pin A | Input Pin B | ESP32-S3 Header Pins | Default Polarity |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| 🛞 **Front-Left (FL)** | Driver #1 — Motor A | `GPIO 17` | `GPIO 18` | `GPIO 8` | 🔴 **Inverted (`-1`)** |
-| 🛞 **Front-Right (FR)** | Driver #1 — Motor B | `GPIO 11` | `GPIO 9` | `GPIO 10` | 🟢 **Normal (`+1`)** |
-| 🛞 **Mid-Left (ML)** | Driver #2 — Motor A | `GPIO 4` | `GPIO 5` | `GPIO 6` | 🔴 **Inverted (`-1`)** |
-| 🛞 **Mid-Right (MR)** | Driver #2 — Motor B | `GPIO 16` | `GPIO 7` | `GPIO 15` | 🟢 **Normal (`+1`)** |
-| 🛞 **Rear-Left (RL)** | Driver #3 — Motor A | `GPIO 12` | `GPIO 13` | `GPIO 14` | 🔴 **Inverted (`-1`)** |
-| 🛞 **Rear-Right (RR)** | Driver #3 — Motor B | `GPIO 21` | `GPIO 38` | `GPIO 47` | 🟢 **Normal (`+1`)** |
+| 🛞 **Left Bank (3x Parallel: `FL + ML + RL`)** | **Channel 1 (`MOTOR1`)** | `IN1` $ightarrow$ **`GPIO 4`** | `IN2` $ightarrow$ **`GPIO 5`** | `J1-04` & `J1-05` | 🔴 **Inverted (`-1`)** |
+| 🛞 **Right Bank (3x Parallel: `FR + MR + RR`)** | **Channel 2 (`MOTOR2`)** | `IN3` $ightarrow$ **`GPIO 6`** | `IN4` $ightarrow$ **`GPIO 7`** | `J1-06` & `J1-07` | 🟢 **Normal (`+1`)** |
 
 ### 2. Sensors (Header J3 — 5 GPIOs)
 
@@ -226,7 +224,7 @@ Open the Arduino IDE Serial Monitor at **`115200 baud`** and press **`RST`** on 
   RUBBLEROVER: DIRECT-DRIVE 6WD CONTROLLER ONLINE
   Motor A: Inverted (-1) | Motor B: Normal (+1) | High-Z Coasting
 ====================================================================
-[MOTORS] All 18 pins configured as OUTPUT. High-Z Coast Stop active.
+[MOTORS] ZK-BM1 4 pins (GPIO 4, 5, 6, 7) configured as OUTPUT. High-Z Coast Stop active.
 [WIFI-AP] Online! SSID: RubbleRover-Tactical-AP | IP: 192.168.4.1
 [AUDIO] INMP441 Initialized via ESP_I2S (16kHz).
 [I2C] Initializing I2C for MLX90640...

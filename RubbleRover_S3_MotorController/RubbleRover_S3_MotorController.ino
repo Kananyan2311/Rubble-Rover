@@ -1,6 +1,6 @@
 /*
   RubbleRover - ESP32-S3 Master Tactical Controller
-  Hardware: ESP32-S3 (Dual-Core) + 3x TB6612FNG (6WD) + MLX90640 + INMP441
+  Hardware: ESP32-S3 (Dual-Core) + ZK-BM1 Dual 10A H-Bridge (GPIO 4, 5, 6, 7 - 3 Parallel Motors/Ch) + MLX90640 + INMP441
   Direct simplified motor control with High-Z neutral coast and Motor A inverted.
 */
 
@@ -20,32 +20,14 @@
 #endif
 
 // =================================================================================================
-// USER VERIFIED PIN DEFINITIONS (3x TB6612 = 18 PINS)
+// ZK-BM1 DUAL 10A MOSFET H-BRIDGE MOTOR DRIVER PIN DEFINITIONS (4 CONTIGUOUS PINS: GPIO 4, 5, 6, 7)
+//   - Channel 1 (Motor A): 3x Left Motors in Parallel  (FL + ML + RL) -> IN1 (GPIO 4), IN2 (GPIO 5)
+//   - Channel 2 (Motor B): 3x Right Motors in Parallel (FR + MR + RR) -> IN3 (GPIO 6), IN4 (GPIO 7)
 // =================================================================================================
-
-// --- TB6612 #1: Front Motor Pair (Header J1-10 to J1-17) ---
-#define PIN_FL_PWMA    17   // Front-Left Speed (Motor A)
-#define PIN_FL_AIN1    18   // Front-Left Direction 1
-#define PIN_FL_AIN2    8    // Front-Left Direction 2
-#define PIN_FR_BIN1    9    // Front-Right Direction 1
-#define PIN_FR_BIN2    10   // Front-Right Direction 2
-#define PIN_FR_PWMB    11   // Front-Right Speed (Motor B)
-
-// --- TB6612 #2: Middle Motor Pair (Header J1-04 to J1-09) ---
-#define PIN_ML_PWMA    4    // Middle-Left Speed (Motor A)
-#define PIN_ML_AIN1    5    // Middle-Left Direction 1
-#define PIN_ML_AIN2    6    // Middle-Left Direction 2
-#define PIN_MR_BIN1    7    // Middle-Right Direction 1
-#define PIN_MR_BIN2    15   // Middle-Right Direction 2
-#define PIN_MR_PWMB    16   // Middle-Right Speed (Motor B)
-
-// --- TB6612 #3: Rear Motor Pair (Header J1-18..20 & J3-10..18) ---
-#define PIN_RL_PWMA    12   // Rear-Left Speed (Motor A)
-#define PIN_RL_AIN1    13   // Rear-Left Direction 1
-#define PIN_RL_AIN2    14   // Rear-Left Direction 2
-#define PIN_RR_BIN1    38   // Rear-Right Direction 1
-#define PIN_RR_BIN2    47   // Rear-Right Direction 2
-#define PIN_RR_PWMB    21   // Rear-Right Speed (Motor B)
+#define PIN_ZK_IN1     4    // Left Bank (3x Left Motors Parallel) Input 1  (Header J1-04)
+#define PIN_ZK_IN2     5    // Left Bank (3x Left Motors Parallel) Input 2  (Header J1-05)
+#define PIN_ZK_IN3     6    // Right Bank (3x Right Motors Parallel) Input 3 (Header J1-06)
+#define PIN_ZK_IN4     7    // Right Bank (3x Right Motors Parallel) Input 4 (Header J1-07)
 
 // --- INMP441 I2S Microphone (Header J3-06..08 | L/R tied to GND) ---
 #define PIN_I2S_SCK    42   // Bit Clock (BCLK)
@@ -1268,7 +1250,7 @@ void setup() {
 
   // 2. Initialize all 18 motor pins to OUTPUT and immediately STOP in High-Z Coast
   setupMotors();
-  Serial.println("[MOTORS] All 18 pins configured as OUTPUT. High-Z Coast Stop active.");
+  Serial.println("[MOTORS] ZK-BM1 4 pins (GPIO 4, 5, 6, 7) configured as OUTPUT. High-Z Coast Stop active.");
 
   // 3. Standalone Wi-Fi Access Point (192.168.4.1)
   WiFi.persistent(false);
@@ -1409,69 +1391,86 @@ void sensorTask(void *pvParameters) {
 }
 
 // =================================================================================================
-// DIRECT-DRIVE SIMPLIFIED MOTOR CONTROL (3x TB6612, High-Torque, Neutral Coast)
+// ZK-BM1 DUAL 10A MOSFET H-BRIDGE CONTROL (GPIO 4, 5, 6, 7 - 3 PARALLEL MOTORS PER CHANNEL)
+//   - Channel 1 (Left 3 Motors Parallel):  PIN_ZK_IN1 (GPIO 4), PIN_ZK_IN2 (GPIO 5)
+//   - Channel 2 (Right 3 Motors Parallel): PIN_ZK_IN3 (GPIO 6), PIN_ZK_IN4 (GPIO 7)
+//   - Stop / Neutral Coast: IN1=LOW, IN2=LOW, IN3=LOW, IN4=LOW (Wheels turn freely by hand)
 // =================================================================================================
 
-// Initialize all 18 motor control pins
+// Initialize the 4 ZK-BM1 control pins (GPIO 4, 5, 6, 7)
 void setupMotors() {
-  pinMode(PIN_FL_PWMA, OUTPUT); pinMode(PIN_FL_AIN1, OUTPUT); pinMode(PIN_FL_AIN2, OUTPUT);
-  pinMode(PIN_FR_BIN1, OUTPUT); pinMode(PIN_FR_BIN2, OUTPUT); pinMode(PIN_FR_PWMB, OUTPUT);
-  pinMode(PIN_ML_PWMA, OUTPUT); pinMode(PIN_ML_AIN1, OUTPUT); pinMode(PIN_ML_AIN2, OUTPUT);
-  pinMode(PIN_MR_BIN1, OUTPUT); pinMode(PIN_MR_BIN2, OUTPUT); pinMode(PIN_MR_PWMB, OUTPUT);
-  pinMode(PIN_RL_PWMA, OUTPUT); pinMode(PIN_RL_AIN1, OUTPUT); pinMode(PIN_RL_AIN2, OUTPUT);
-  pinMode(PIN_RR_BIN1, OUTPUT); pinMode(PIN_RR_BIN2, OUTPUT); pinMode(PIN_RR_PWMB, OUTPUT);
+  pinMode(PIN_ZK_IN1, OUTPUT);
+  pinMode(PIN_ZK_IN2, OUTPUT);
+  pinMode(PIN_ZK_IN3, OUTPUT);
+  pinMode(PIN_ZK_IN4, OUTPUT);
 
   stopMotors();
 }
 
-// Drive speed pin: digital HIGH for speed > 0 guarantees full voltage & zero timer issues!
-void setMotorPin(int pwmPin, int speed) {
-  if (speed >= 180) {
-    digitalWrite(pwmPin, HIGH); // Pure 3.3V High-Torque drive (eliminates all PWM timer stalls!)
-  } else if (speed <= 0) {
-    digitalWrite(pwmPin, LOW);  // 0V
+// Drive a ZK-BM1 input pin: digital HIGH for active drive, LOW for coast/off
+void setMotorPin(int pin, int speed) {
+  if (speed > 0) {
+    digitalWrite(pin, HIGH); // Pure 3.3V Full-Torque Gate Drive (Zero PWM timer stalls)
   } else {
-    analogWrite(pwmPin, speed);
+    digitalWrite(pin, LOW);  // 0V (Neutral Coast)
   }
 }
 
-// Set Left Motor Bank (FL, ML, RL)
+// Drive Left Channel (3x Left Motors in Parallel on IN1=GPIO 4, IN2=GPIO 5) in one go
 void setLeftMotors(uint8_t in1, uint8_t in2, int speed) {
-  digitalWrite(PIN_FL_AIN1, in1); digitalWrite(PIN_FL_AIN2, in2); setMotorPin(PIN_FL_PWMA, speed);
-  digitalWrite(PIN_ML_AIN1, in1); digitalWrite(PIN_ML_AIN2, in2); setMotorPin(PIN_ML_PWMA, speed);
-  digitalWrite(PIN_RL_AIN1, in1); digitalWrite(PIN_RL_AIN2, in2); setMotorPin(PIN_RL_PWMA, speed);
+  if (speed <= 0 || (in1 == LOW && in2 == LOW)) {
+    digitalWrite(PIN_ZK_IN1, LOW);
+    digitalWrite(PIN_ZK_IN2, LOW);
+  } else if (in1 == HIGH && in2 == LOW) {
+    digitalWrite(PIN_ZK_IN2, LOW);
+    setMotorPin(PIN_ZK_IN1, speed);
+  } else if (in1 == LOW && in2 == HIGH) {
+    digitalWrite(PIN_ZK_IN1, LOW);
+    setMotorPin(PIN_ZK_IN2, speed);
+  } else {
+    digitalWrite(PIN_ZK_IN1, LOW);
+    digitalWrite(PIN_ZK_IN2, LOW);
+  }
 }
 
-// Set Right Motor Bank (FR, MR, RR)
-void setRightMotors(uint8_t in1, uint8_t in2, int speed) {
-  digitalWrite(PIN_FR_BIN1, in1); digitalWrite(PIN_FR_BIN2, in2); setMotorPin(PIN_FR_PWMB, speed);
-  digitalWrite(PIN_MR_BIN1, in1); digitalWrite(PIN_MR_BIN2, in2); setMotorPin(PIN_MR_PWMB, speed);
-  digitalWrite(PIN_RR_BIN1, in1); digitalWrite(PIN_RR_BIN2, in2); setMotorPin(PIN_RR_PWMB, speed);
+// Drive Right Channel (3x Right Motors in Parallel on IN3=GPIO 6, IN4=GPIO 7) in one go
+void setRightMotors(uint8_t in3, uint8_t in4, int speed) {
+  if (speed <= 0 || (in3 == LOW && in4 == LOW)) {
+    digitalWrite(PIN_ZK_IN3, LOW);
+    digitalWrite(PIN_ZK_IN4, LOW);
+  } else if (in3 == HIGH && in4 == LOW) {
+    digitalWrite(PIN_ZK_IN4, LOW);
+    setMotorPin(PIN_ZK_IN3, speed);
+  } else if (in3 == LOW && in4 == HIGH) {
+    digitalWrite(PIN_ZK_IN3, LOW);
+    setMotorPin(PIN_ZK_IN4, speed);
+  } else {
+    digitalWrite(PIN_ZK_IN3, LOW);
+    digitalWrite(PIN_ZK_IN4, LOW);
+  }
 }
 
-// 1. FORWARD: All 6 motors roll forward!
+// 1. FORWARD: All 6 motors (Left Bank + Right Bank) roll forward in one go!
 void moveForward(int speed) {
-  // Motor A reversed: LOW, HIGH = Forward
+  // Channel 1 (Left Bank - Motor A): inverted (-1) -> LOW, HIGH = Forward
   if (polarityA == -1) setLeftMotors(LOW, HIGH, speed);
   else                 setLeftMotors(HIGH, LOW, speed);
 
-  // Motor B normal: HIGH, LOW = Forward
+  // Channel 2 (Right Bank - Motor B): normal (+1) -> HIGH, LOW = Forward
   if (polarityB == 1)  setRightMotors(HIGH, LOW, speed);
   else                 setRightMotors(LOW, HIGH, speed);
 }
 
-// 2. BACKWARD: All 6 motors roll reverse!
+// 2. BACKWARD: All 6 motors (Left Bank + Right Bank) roll reverse in one go!
 void moveBackward(int speed) {
-  // Motor A reversed: HIGH, LOW = Reverse
   if (polarityA == -1) setLeftMotors(HIGH, LOW, speed);
   else                 setLeftMotors(LOW, HIGH, speed);
 
-  // Motor B normal: LOW, HIGH = Reverse
   if (polarityB == 1)  setRightMotors(LOW, HIGH, speed);
   else                 setRightMotors(HIGH, LOW, speed);
 }
 
-// 3. SPIN LEFT (Button B): Left Reverse, Right Forward (Tank Pivot)
+// 3. SPIN LEFT (Button B): Left Bank Reverse, Right Bank Forward (Tank Pivot)
 void spinLeft(int speed) {
   if (polarityA == -1) setLeftMotors(HIGH, LOW, speed);
   else                 setLeftMotors(LOW, HIGH, speed);
@@ -1480,7 +1479,7 @@ void spinLeft(int speed) {
   else                 setRightMotors(LOW, HIGH, speed);
 }
 
-// 4. SPIN RIGHT (Button A): Left Forward, Right Reverse (Tank Pivot)
+// 4. SPIN RIGHT (Button A): Left Bank Forward, Right Bank Reverse (Tank Pivot)
 void spinRight(int speed) {
   if (polarityA == -1) setLeftMotors(LOW, HIGH, speed);
   else                 setLeftMotors(HIGH, LOW, speed);
@@ -1489,46 +1488,40 @@ void spinRight(int speed) {
   else                 setRightMotors(HIGH, LOW, speed);
 }
 
-// 5. STEER FORWARD LEFT: Left slower, Right full
+// 5. STEER FORWARD LEFT: Left Bank Coast, Right Bank Full Forward
 void steerForwardLeft(int speed) {
-  if (polarityA == -1) setLeftMotors(LOW, HIGH, speed / 2);
-  else                 setLeftMotors(HIGH, LOW, speed / 2);
-
+  setLeftMotors(LOW, LOW, 0);
   if (polarityB == 1)  setRightMotors(HIGH, LOW, speed);
   else                 setRightMotors(LOW, HIGH, speed);
 }
 
-// 6. STEER FORWARD RIGHT: Left full, Right slower
+// 6. STEER FORWARD RIGHT: Left Bank Full Forward, Right Bank Coast
 void steerForwardRight(int speed) {
   if (polarityA == -1) setLeftMotors(LOW, HIGH, speed);
   else                 setLeftMotors(HIGH, LOW, speed);
-
-  if (polarityB == 1)  setRightMotors(HIGH, LOW, speed / 2);
-  else                 setRightMotors(LOW, HIGH, speed / 2);
+  setRightMotors(LOW, LOW, 0);
 }
 
-// 7. STEER BACKWARD LEFT: Left slower, Right full
+// 7. STEER BACKWARD LEFT: Left Bank Coast, Right Bank Full Reverse
 void steerBackwardLeft(int speed) {
-  if (polarityA == -1) setLeftMotors(HIGH, LOW, speed / 2);
-  else                 setLeftMotors(LOW, HIGH, speed / 2);
-
+  setLeftMotors(LOW, LOW, 0);
   if (polarityB == 1)  setRightMotors(LOW, HIGH, speed);
   else                 setRightMotors(HIGH, LOW, speed);
 }
 
-// 8. STEER BACKWARD RIGHT: Left full, Right slower
+// 8. STEER BACKWARD RIGHT: Left Bank Full Reverse, Right Bank Coast
 void steerBackwardRight(int speed) {
   if (polarityA == -1) setLeftMotors(HIGH, LOW, speed);
   else                 setLeftMotors(LOW, HIGH, speed);
-
-  if (polarityB == 1)  setRightMotors(LOW, HIGH, speed / 2);
-  else                 setRightMotors(HIGH, LOW, speed / 2);
+  setRightMotors(LOW, LOW, 0);
 }
 
-// 9. STOP: High-Z Neutral Coast (Wheels turn freely by hand, zero short-circuit brake)
+// 9. STOP: High-Z Neutral Coast (All 4 ZK-BM1 pins LOW -> Wheels spin freely by hand)
 void stopMotors() {
-  setLeftMotors(LOW, LOW, 0);
-  setRightMotors(LOW, LOW, 0);
+  digitalWrite(PIN_ZK_IN1, LOW);
+  digitalWrite(PIN_ZK_IN2, LOW);
+  digitalWrite(PIN_ZK_IN3, LOW);
+  digitalWrite(PIN_ZK_IN4, LOW);
   curThrottle = 0;
   curSteering = 0;
 }
@@ -1537,54 +1530,40 @@ void emergencyBrake() {
   stopMotors();
 }
 
-// HARDWARE DIAGNOSTIC: Tests all 6 motors individually (1 second each)
+// HARDWARE DIAGNOSTIC: Tests Left Channel (3 motors) & Right Channel (3 motors) on ZK-BM1
 void runMotorDiagnostic() {
-  Serial.println("\n--- STARTING 6-MOTOR HARDWARE DIAGNOSTIC ---");
+  Serial.println("\n--- STARTING ZK-BM1 DUAL-CHANNEL (6-MOTOR PARALLEL) DIAGNOSTIC ---");
 
-  // 1. Front-Left
-  Serial.println("[DIAG 1/6] Front-Left (Motor A)...");
-  digitalWrite(PIN_FL_AIN1, LOW); digitalWrite(PIN_FL_AIN2, HIGH); digitalWrite(PIN_FL_PWMA, HIGH);
+  // 1. Left Bank (3 Left Motors in parallel on GPIO 4 & 5) Forward
+  Serial.println("[DIAG 1/4] Left Channel (3x Left Motors Parallel: IN1=GPIO4, IN2=GPIO5) FORWARD...");
+  moveForward(255);
+  setRightMotors(LOW, LOW, 0);
   delay(1000);
-  digitalWrite(PIN_FL_AIN1, LOW); digitalWrite(PIN_FL_AIN2, LOW); digitalWrite(PIN_FL_PWMA, LOW);
-  delay(300);
-
-  // 2. Front-Right
-  Serial.println("[DIAG 2/6] Front-Right (Motor B)...");
-  digitalWrite(PIN_FR_BIN1, HIGH); digitalWrite(PIN_FR_BIN2, LOW); digitalWrite(PIN_FR_PWMB, HIGH);
-  delay(1000);
-  digitalWrite(PIN_FR_BIN1, LOW); digitalWrite(PIN_FR_BIN2, LOW); digitalWrite(PIN_FR_PWMB, LOW);
-  delay(300);
-
-  // 3. Mid-Left
-  Serial.println("[DIAG 3/6] Mid-Left (Motor A)...");
-  digitalWrite(PIN_ML_AIN1, LOW); digitalWrite(PIN_ML_AIN2, HIGH); digitalWrite(PIN_ML_PWMA, HIGH);
-  delay(1000);
-  digitalWrite(PIN_ML_AIN1, LOW); digitalWrite(PIN_ML_AIN2, LOW); digitalWrite(PIN_ML_PWMA, LOW);
-  delay(300);
-
-  // 4. Mid-Right
-  Serial.println("[DIAG 4/6] Mid-Right (Motor B)...");
-  digitalWrite(PIN_MR_BIN1, HIGH); digitalWrite(PIN_MR_BIN2, LOW); digitalWrite(PIN_MR_PWMB, HIGH);
-  delay(1000);
-  digitalWrite(PIN_MR_BIN1, LOW); digitalWrite(PIN_MR_BIN2, LOW); digitalWrite(PIN_MR_PWMB, LOW);
-  delay(300);
-
-  // 5. Rear-Left
-  Serial.println("[DIAG 5/6] Rear-Left (Motor A)...");
-  digitalWrite(PIN_RL_AIN1, LOW); digitalWrite(PIN_RL_AIN2, HIGH); digitalWrite(PIN_RL_PWMA, HIGH);
-  delay(1000);
-  digitalWrite(PIN_RL_AIN1, LOW); digitalWrite(PIN_RL_AIN2, LOW); digitalWrite(PIN_RL_PWMA, LOW);
-  delay(300);
-
-  // 6. Rear-Right
-  Serial.println("[DIAG 6/6] Rear-Right (Motor B)...");
-  digitalWrite(PIN_RR_BIN1, HIGH); digitalWrite(PIN_RR_BIN2, LOW); digitalWrite(PIN_RR_PWMB, HIGH);
-  delay(1000);
-  digitalWrite(PIN_RR_BIN1, LOW); digitalWrite(PIN_RR_BIN2, LOW); digitalWrite(PIN_RR_PWMB, LOW);
-  delay(300);
-
   stopMotors();
-  Serial.println("--- MOTOR DIAGNOSTIC COMPLETE ---\n");
+  delay(300);
+
+  // 2. Right Bank (3 Right Motors in parallel on GPIO 6 & 7) Forward
+  Serial.println("[DIAG 2/4] Right Channel (3x Right Motors Parallel: IN3=GPIO6, IN4=GPIO7) FORWARD...");
+  moveForward(255);
+  setLeftMotors(LOW, LOW, 0);
+  delay(1000);
+  stopMotors();
+  delay(300);
+
+  // 3. All 6 Motors Forward in One Go
+  Serial.println("[DIAG 3/4] ALL 6 MOTORS FORWARD IN ONE GO...");
+  moveForward(255);
+  delay(1000);
+  stopMotors();
+  delay(300);
+
+  // 4. All 6 Motors Reverse in One Go
+  Serial.println("[DIAG 4/4] ALL 6 MOTORS REVERSE IN ONE GO...");
+  moveBackward(255);
+  delay(1000);
+  stopMotors();
+
+  Serial.println("--- ZK-BM1 MOTOR DIAGNOSTIC COMPLETE ---\n");
 }
 
 // =================================================================================================
